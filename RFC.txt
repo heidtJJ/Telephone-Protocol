@@ -1,0 +1,702 @@
+Request for Comments: 9999                                  Clarkson University
+Category: Working Draft                                          September 2018
+
+    TELEPHONE PROTOCOL -- Ver. 1.7
+
+Abstract
+
+    Telephone Protocol is a networked version of the classic game "telephone".
+    A message is generated and "whispered" from one to another and finally
+    arrives back to the first one who has generated it.  In the original game
+    of telephone, the message usually arrives back at the originator garbled in
+    a funny way. In this game, however, we are going to try and transfer the
+    message without changing it.
+
+    This protocol uses TCP as an underlying transport layer. Each "player" will
+    serve as both a client and a server. Client must transfer the message to
+    Server. Once the TCP connection between client and server is established,
+    the client and the server should have a version handshake. After agreement
+    on the protocol version, the client will send the message to the server.
+    The server will examine the checksum of the message and output some summary
+    information of the message it receives.
+ 
+Table of Contents
+
+    1 Introduction
+    2 Terminology
+    2.1 Message
+    2.2 Server and Client
+    2.3 Originator and Intermediate
+    3 Requirements
+    4 Specifications
+    4.1 Forming the Telephone Circle
+    4.2 Format of Message
+    4.3 Programming
+    4.4 Method of Transfer
+    5 Connection Initiation and Version Handshake
+    6 Data section
+    7 Internal Format of the data section
+    7.1 Hop
+    7.2 MessageId 
+    7.3 NetworkAddress 
+    7.4 System
+    7.5 Program
+    7.6 Author
+    7.7 SendingTimestamp
+    7.8 Message Checksum
+    7.9 Headers Checksum
+    7.10 Warning
+    7.11 Transform 
+    8 Connection Termination and Error Handling
+    9 Valid Requests and Responses
+    10 Statistics Display
+    11 References
+    Appendix A Scenarios
+    Appendix B Checksum Examples
+    Appendix C: Ideas for Comparing Implementations/Telephone Rings
+
+1   Introduction
+
+    This protocol is a protocol designed for the game "telephone". It is an
+    application-level protocol defining how a Telephone protocol application
+    can communicate to others in order to transfer a message between computers
+    that are set up in a ring type of topology. An original message will be
+    sent from one of these computers and will be passed on through the ring and
+    eventually end its trip by reaching the computer who originated the
+    message. 
+
+2   Terminology
+
+    Some key words in this document are to be interpreted as described below.
+
+2.1 Message
+
+    The term "message"  refers to the plain text data message which the first
+    computer originates and the others in the ring pass on.
+
+2.2 Server and Client
+
+    The Server/Client architecture is used in the protocol application. As
+    specified in the requirements, the server is to receive the message from
+    another machine in the ring and the client is to send the message to the
+    other computer in the ring. It is intended that each application
+    implementing the protocol participate as both a server and a client in the
+    transfer of a message. The originator of the message begins as a client and
+    then becomes a server waiting for the message to complete its trip around
+    the circle of participants. All intermediate machines are first a server
+    (waiting for the message to be sent to them) and then a client (passing the
+    message on to the next machine in the circle).
+
+2.3 Originator and Intermediate
+
+    The machine who first handles a new message and sends it out is called the
+    Originator while the rest of the computers in the ring who pass the message
+    on to another and finally return it to the originator machine are called
+    Intermediate machines. Each machine that transmits a message will add
+    certain information about themselves including the author of the program,
+    the language in which the program was written, the platform on which the
+    program is running, the IP address and port number of the machine itself,
+    the IP address and port number of the machine to which they are sending the
+    data and checksum information to all the machines to detect data corruption
+    in transit.
+
+    Each machine that touches the message is responsible for determining if the
+    message has been altered. The originator machine is responsible for
+    displaying statistical information about the path of the message (number of
+    machines it passed through, languages used, platforms used, time spent at
+    each hop, etc.) 
+
+3   Requirements
+
+    The protocol requirements, as specified in the assignment, are as follows:
+
+        1. Have a handshaking phase to allow client and server to agree on the
+           version of the protocol use.
+
+        2. Transfer the original message exactly as given.
+
+        3. Each computer should add its machine information in the message.
+
+
+4   Specifications
+
+    Originator
+
+        When a machine originates a message, it evokes its client to send the
+        original message out. The machine becomes the originator. After the
+        originator adds the required header information to the message and
+        sends it out, the originator's server will keep listening until the
+        message returns. From the message the originator server receives, the
+        originator should display the statistics of the message on the screen. 
+
+    Intermediate
+
+        For an intermediate machine, after its server receives the message from
+        another client, the intermediate's information is added into the
+        message and the intermediate client sends the message to another
+        intermediate server or returns it to the originator. After the message
+        is successfully sent out, the intermediate displays the statistics of
+        the message and the machine from whom it receives the message.
+
+4.1 Forming the Telephone Circle
+
+    This protocol contains no support for forming the circle of machines nor
+    for electing a originator. We intend that this either be done manually by
+    those running the programs and then the necessary information passed to
+    the program on a command line or set through a GUI interface. For
+    example, we propose the following parameters to any telephone
+    application:
+
+        <originator>    ::=     '0' | '1'
+
+        <source>        ::=     <endpoint>
+
+        <dest>          ::=     <endpoint>
+
+        "$ ./telephone " <originator> <source> <dest>
+
+    (See Section 6 for the syntax used in this example--don't include the
+    double quotes.)
+
+    It would also be possible for this information to be determined
+    automatically through another protocol. For example, the Originator machine
+    could allow intermediate to connect with their information and then it
+    could determine an order for the ring and inform all intermediate machines.
+    This is beyond the scope of this RFC.
+
+4.2 Format of Message
+
+    We restrict the contents of the message to contain only 7-bit ASCII
+    characters. We will interpret all data sent as plain text. 
+
+4.3 Programming
+
+    A Telephone Protocol application should be implemented as a single program
+    that can serve both as a client and a server for this protocol as well as a
+    parser of the metadata returned.
+
+    There are no requirements on the language, operating system and other
+    specifics of the program as long as the implementation follows the
+    specifications outlined in this RFC. 
+
+4.4 Transfer Protocol
+
+    The telephone protocol should use TCP as the transfer protocol.
+
+5   Connection Initiation and Version Handshake
+
+    As discussed above, TCP will be used to set up a connection between the
+    client and the server. The client will be the first to open a connection to
+    a listening server. Once the connection is established, the server should
+    have a handshake with the client.
+
+    The server should first send HELLO to the client after connection is
+    established, and the client checks the version and responds HELLO to the
+    server if the version is acceptable. 
+
+    If the server sends an unsupported version or the server says anything
+    else, the client will respond QUIT.
+
+    For example:
+
+        S: HELLO 1.7
+        C: HELLO 1.7 
+
+    Or:
+
+        S: HELLO <unsupported version> 
+        C: QUIT
+
+    Or:
+
+        S: <anything else>
+        C: QUIT
+
+6   Data section
+
+    We will now precisely define the protocol. The following productions are
+    phrased in terms of the "Extended Backus-Naur Form" (EBNF), also used in
+    other RFCs.
+
+    - The values range over 8-bit bytes, or 7-bit ASCII codepoints, as
+      convenient. A literal ASCII codepoint is surrounded by single quotes
+      (e.g., 'a'), whereas a decimal number indicates a byte value (e.g., 97).
+
+    - A double-quoted sequence of characters is equivalent to the sequence of
+      their codepoints; for example, "hello " is the same as 'h' 'e' 'l' 'l'
+      'o' ' '.
+
+    - A dash (-) indicates a range of byte values, inclusive; for example, 'a'
+      - 'd' is equivalent to 97 - 100, itself equivalent to 97 | 98 | 99 | 100.
+
+    - A star (*) indicates a production that may be repeated zero or more
+      times. For example, 'a' 'b'* matches "a", "ab", "abb", "abbb", "abbbb",
+      etc.
+
+    - A question mark (?) indicates that a production is optional, and may be
+      omitted. For example, 'a' 'b'? 'c' matches both of "ac" and "abc".
+
+    - A pipe between two productions indicates either may match. Pipes have the
+      lowest precedence, so 'a' | 'e' - 'g' | 'q'* would match 'a', any of 'e',
+      'f', or, 'q', or any number of 'q' (including zero).
+
+    - New nonterminals are declared in angle brackets (<>), separated from the
+      sequences they may match by "::=".
+
+    Where appropriate, some parenthetical explanations are also included.
+    Whitespace is unimportant.
+
+    The following definitions are useful as a basis:
+
+        <CR>        ::=     13 (ASCII carriage return)
+
+        <LF>        ::=     10 (ASCII newline/line feed)
+
+        <CRLF>      ::=     <CR> <LF>
+
+        <SP>        ::=     ' ' (ASCII code 32)
+
+        <digit>     ::=     '0' - '9' (any ASCII decimal digit)
+            (the "value" is to be parsed as an arbitrary-precision integer)
+
+        <number>    ::=     <digit> <digit>*
+
+        <letter>    ::=     'a' - 'z' | 'A' - 'Z'
+
+        <alphanum>  ::=     <digit> | <letter>
+
+        <name>      ::=     <letter> <alphanum>*
+
+        <any>       ::=     0 - 255
+
+6.1 Overview
+
+    After the client has a successful version handshake with the server, it
+    will begin to send the message to it. It sends the request DATA, followed
+    by the Header blocks, followed by one blank line and then the actual
+    message to the server in the next step. The data block ends with a period
+    on a line by itself. After the server has received the message, it responds
+    SUCCESS.
+
+    For example:
+
+        C: DATA
+        C: <actual data section ending with CRLF.CRLF>
+        S: SUCCESS
+
+    We package the message in the formation of metadata, and the protocol
+    application should contain a message parser capable of analyzing the data.
+    The data section is strictly specified in this format:
+
+        <header>    ::=     <name> ':' <SP> <any>* <CRLF>
+            (the "value" of the header is the <any>* part)
+
+        <headers>   ::=     <header>*
+
+        <body>      ::=     <any>*
+
+        <eom>       ::=     <CRLF> '.' <CRLF> ("end of message")
+
+        <message>   ::=     <header>* <CRLF> <body> <eom>
+
+    The headers are ordered; whenever a processor must add new headers, they
+    MUST be at the end of the sequence. When only a single value for a given
+    header is needed or implied, it MUST be the value contained within the
+    last header of the same name. In practice, this means the originator's
+    headers always come first, and may be overridden many times.
+
+    Each named header has a specific semantic. If a processor does not
+    understand a header, it MUST pass it unmodified. Semantic meaning for some
+    headers are listed below. This list may be expanded by further standards.
+
+    The body section is terminated by <eom>, which is displayed in a terminal
+    as a period on its own line. After receiving the final <LF> of the <eom>
+    sequence, the receiver MUST return to a state where it is ready to receive
+    another message. If the sequence "<CRLF> . " is not followed by <CRLF>
+    verbatim, the receiver MUST delete the '.' and consider the remainder of
+    the line to be <body> data. Thus, if a client wishes to send a line
+    starting with a '.' in the body, it MUST prefix the line with a '.'.
+
+    SMTP follows the same procedure. Refer to RFC 2821 for details.
+
+7   Internal Format of the data section
+
+    Each message header block contains the information of a machine that has
+    touched the message. Hence, the message header blocks record the trip of
+    the message. The message header block follows the format below:
+
+        <portspec>  ::=     ':' <number> (the port is the number)
+
+        <3digit>    ::=     <digit> <digit>? <digit>?
+
+        <ip4addr>   ::=     <3digit> '.' <3digit> '.' <3digit> '.' <3digit>
+            (this is a "dotted quad" IPv4 address)
+
+        <hostchar>  ::=     <alphanum> | '.'
+
+        <hostname>  ::=     <hostchar> <hostchar>*
+            (a simplified DNS name)
+
+        <host>      ::=     <ip4addr> | <hostname>
+
+        <endpoint>  ::=     <host> <portspec>?
+
+        <slashname> ::=     '/' <name>
+
+        <names>     ::=     <name> <slashname>*
+
+        <ts>        ::=     <number> ':' <number> ':' <number> ':' <number>
+            (in format hour:minute:second:milliseconds, according to the
+            sender's clock)
+
+        <hex>       ::=     <digit> | 'a' - 'f'
+
+        <csum>      ::=     <hex> <hex> <hex> <hex>
+
+        <sysheader> ::=
+                "Hop: " <number> <CRLF>
+            |   "MessageId: " <number> <CRLF>
+            |   "FromHost: " <endpoint> <CRLF>
+            |   "ToHost: " <endpoint> <CRLF>
+            |   "System: " <any>* <CRLF>
+            |   "Program: " <name> '/' <any>* <CRLF>
+            |   "Author: " <names> <CRLF>
+            |   "SendingTimestamp: " <ts> <CRLF>
+            |   "MessageChecksum: " <csum> <CRLF>
+            |   "HeadersChecksum: " <csum> <CRLF>
+            |   "Warning: " <any>* <CRLF>
+            |   "Transform: " <any>* <CRLF>
+
+7.1 Hop
+
+    Hop counts the machines who have touched the messages. It is incremented by
+    1 each time the machine is to send the message. Each machine sending the
+    message adds its message header above the other message headers. Hop 0
+    stands for the originator machine.  
+
+    The Hop header take the form:
+
+        Hop:<SP><number><CRLF>
+
+7.2 MessageId
+
+    The MessageId is a number added by the originator to help them identify
+    this message as distinct from any other message they sent. Aside from being
+    numeric, the originator may set this to any value.
+
+    The MessageId header takes the form:
+
+        MessageId:<SP><number><CRLF>
+
+
+7.3 FromHost and ToHost 
+
+    The machine to send the message will add two address headers. The address
+    header specifies the IP address and port number. One (FromHost)
+    will specify the IP address	    and port number of the machine from which we
+    received the message and one (ToHost) will specify the IP address
+    and port number of the machine to which we are sending the message.
+
+    If the <portspec> is elided, it will be assumed to be the default port, if
+    and when it is assigned by IANA or another authority.
+
+7.4 System
+
+    The system header will record information about the machine's operating
+    system and its version. It may take any format, but SHOULD include
+    information about the present operating system, such as its name (e.g.
+    "Windows, "Mac OS", "Linux", etc.) and its version (e.g., "10" or "XP",
+    "X", "4.12.2", etc.).
+
+7.5 Program
+
+    The program header should explicitly speak what program language the
+    application has used and what compiler is used.
+
+    It takes the form of a pair of a name, a slash, and some data; the name
+    MUST be the name of the language in use (e.g., "C", "C++", "C#", "Java",
+    "Perl", "PHP", "Python", "BASIC", "Ruby", etc.); the data is versioning and
+    implementation implementation relevant to that compiler (e.g. "C/GCC",
+    "C++/G++ 6.2", "Python/3.6.4", etc.).
+
+7.6 Author
+
+    This header catalogues the names of the people who worked on this
+    implementation, as a sequence of slash-separated names.
+
+7.7 SendingTimestamp
+
+    This header is set to the time at which the message is sent by the
+    client--at the time of the attempt being made. It consists of four
+    numbers--the hour, minute, second, and number of milliseconds--separated by
+    colons. The time measured must be UTC. It is an error if any of the hour,
+    minute, or second are greater in length than two digits, or the
+    milliseconds greater in length than three digits.
+
+7.8 Message Checksum
+    The Message Checksum header reports the checksum of the <body> bytes not
+    including any headers. The message checksum is the hexadecimal
+    representation of a 16 bit checksum. See Appendix B for the checksum
+    computation method.
+    
+    The value of this header MUST be padded to four hexadecimal digits, even if
+    it could be written with less, by the addition of leading zeroes if
+    necessary.
+
+    Notice: The receiver MUST NOT halt on a bad checksum. If a bad checksum is
+    detected, it should add a warning header and respond to client with WARN
+    but still transfer the message. 
+
+7.9 Headers Checksum (Optional)
+
+    The HeadersChecksum MAY be computed over the bytes of all headers in
+    <headers> which precede this header, including the final <CRLF> of the
+    preceding header. It SHOULD be the last header set by the sender. See
+    Appendix B for the checksum computation method.
+
+    The value of this header MUST be padded to four hexadecimal digits, even if
+    it could be written with less, by the addition of leading zeroes if
+    necessary.
+
+    Notice: The receiver MUST NOT halt on a bad checksum. If a bad checksum is
+    detected, it should add a warning header and respond to client with WARN
+    but still transfer the message. 
+
+7.10 Warning Header (If Needed)
+
+    If a server detects a violation of the protocol, they SHOULD add the
+    Warning header when it is transferred to the next stop in the ring. The
+    data is a human-readable warning message logging the violation, e.g.:
+
+        Warning: Bad message checksum at hop 3
+        Warning: Bad header checksum at hop 2
+        Warning: Missing required header 
+        Warning: Loop detected (duplicate messageId received)
+
+7.11 Transformation Header (Optional)
+
+    You may optionally include a Transformation Header indicating a deliberate
+    transformation that was done on the <body>. The intention of this header is
+    purely for fun :-) .
+
+    All transforms are of the type X TO Y.
+
+        Transform: Word/the TO Word/super
+            (Literal word replacement)
+        Transform: Word/VERB TO Random/VERB
+            (Think Madlibs - replace all literal words VERB with a random verb)
+        Transform: Word/NOUN/one TO Random/NOUN
+            (Think collaborative madlibs - replace one literal word NOUN with a
+            random noun)
+        Transform: Language/English TO Language/Spanish
+            (Think call to external site that translates block of text from one
+            language to another)
+        Transform: MIME-TYPE to MIME-TYPE
+            (Could you used to do plain text to gzipped etc)
+
+Feel free to suggest other fun transforms ( encryption? decryption?).
+
+8   Connection Termination and Error Handling
+
+    The official way to terminate the connection is for client to say QUIT and
+    for server responds to the client with GOODBYE. After receiving the
+    GOODBYE, the client is free to close the underlying TCP connection. The
+    server is free to close the underlying TCP connection after sending the
+    GOODBYE. 
+
+    For example:
+
+        C: QUIT
+        S: GOODBYE
+
+    We would do simpler error handling in this protocol. If client says
+    anything else or says them in the wrong order (like DATA before HELLO), the
+    server can say GOODBYE.
+
+9   Valid Requests and Responses
+
+    There are three valid commands for client to use:
+
+        <version>   ::=     <number> '.' <number>
+
+        <validcmd>  ::=
+                "HELLO " <version> <CRLF>
+            |   "DATA" <CRLF>
+            |   "QUIT" <CRLF>
+
+    There are also four valid responses for server to use:
+
+        <validresp> ::=
+                "HELLO " <version> <CRLF>
+            |   "SUCCESS" <CRLF>
+            |   "GOODBYE" <CRLF>
+            |   "WARN" <CRLF>
+
+    In general, either a command or response could take the form of a virtual
+    line:
+
+        <param>     ::= ' ' <any>*
+
+        <vline>     ::= <name> <param>? <CRLF>
+
+    After receiving the final <LF>, either peer may issue QUIT/GOODBYE if the
+    <vline> did not correspond to any valid command or response, and then
+    terminate the connection.
+
+10  Statistics Display
+
+    After the intermediate server receives the message, the intermediate
+    examines the two checksums-message checksum & headers checksum and displays
+    the results and the client machine information on the screen.
+
+    After the originator finally gets the message return, the originator
+    examines the checksums and display the result on the screen. And the
+    originator SHOULD also display the path of the message (number of machines
+    it passed through, languages used, platforms used, time spent at each hop,
+    etc.)
+
+11  References
+[1]  Jeanna Matthews, "Let's Play Telephone CS454/554, SP2005" January 2005. 
+[2]  Patricia Jablonski, "Telephone Version CS454/554 RFC 0000", February 2004.
+[3]  J. Klensin, "Simple Mail Transfer Protocol RFC 2821", April 2001.
+[4]  J. Reynolds, J. Postel, "ASSIGNED NUMBERS RFC 1700", October 1994.
+[5]  W. Hu, Telephone Protocol, February 2006.
+[6]  M. Platek. Madlib telephone, September 2010.
+
+APPENDIX A: Scenarios
+
+    This section presents complete scenarios of several types of Telephone
+    protocol sessions. In the examples, S: indicates what is said by the
+    server, and C:indicates what is said by the client.
+
+A.1 A Typical Telephone Scenario
+
+        S: HELLO 1.7
+        C: HELLO 1.7
+        C: DATA
+        C: Hop: 5<CRLF>MessageId:234345<CRLF>ToNetw...blablabla<CRLF>.<CRLF>
+        S: SUCCESS
+        C: QUIT
+        S: GOODBYE
+
+A.2 A Version Handshake Error Telephone Scenario
+
+        S: HELLO 1.7
+        C: QUIT
+        S: GOODBYE
+
+A.3 A Checksum error Telephone Scenario
+
+        S: HELLO 1.7
+        C: HELLO 1.7
+        C: DATA 
+        C: Hop: 8<CRLF>...blablabla<CRLF>.<CRLF>
+        S: WARN
+        C: QUIT
+        S: GOODBYE
+
+A.4 DATA Format
+
+        Hop: 1
+        MessageId: 3456
+        FromHost: 192.168.0.12:9879
+        ToHost: 192.168.0.4:8888
+        System: WINDOWS/XP
+        Program: JAVA/JAVAC
+        Author: Frodo Baggins
+        SendingTimestamp: 17:00:00:000
+        MessageChecksum: 432F
+        HeadersChecksum: A350
+        Hop: 0
+        MessageId: 3456
+        FromHost: 192.168.0.1:34953
+	ToHost: 192.168.0.12:8888
+        System: LINIX/DEBIAN/R3.0
+        Program: C++/GCC
+        Author: Alex, J./Jacky Elton/David Wang
+        SendingTimestamp: 16:59:59:009
+        MessageChecksum: 423F
+        HeadersChecksum: 6F38
+
+        Hello! You're receiving a message
+            from the telephone game!
+
+APPENDIX B: Checksum Examples
+
+    We use the same checksum as TCP and UDP. The checksum is 16 bit. The data
+    to be checksummed should  be divided into series of 16 bit integers. If it
+    is not an even multiple of 16 bits, then the data will be padded with 0s to
+    the next 16 bit boundary. Consult RFC 1071, Computing the Internet
+    Checksum. 
+
+    Here we provide some checksum codes in C, you can check it. Hope it will be
+    useful for implementation. More explanations are in UDPChecksum.C and
+    RFC1071.
+
+    Please pay special attention to the exact sequence of bytes over which the
+    checksum is computed.
+
+B.1 Checksum Code in C:
+
+    The following is overtly based on the reference implementation given in
+    RFC1071:
+
+        #include <stddef.h>
+
+        uint16_t checksum(void *data, size_t size) {
+            uint32_t sum = 0;
+            /* Cast to uint16_t for pointer arithmetic */
+            uint16_t *data16 = data;
+
+            while(size > 0) {
+                sum += *data16++;
+                size -= 2;
+            }
+
+            /* For the extraneous byte, if any: */
+            if(size > 0) sum += *((uint8_t *) data16);
+
+            /* Fold the sum as needed */
+            while(sum >> 16) sum = (sum & 0xFFFF) + (sum >> 16);
+
+            /* One's complement is binary inversion: */
+            return ~sum;
+        }
+B.2 Checksum Code in Python:
+
+    For Python especially, ensure the argument is a bytestring (bytes in
+    Python3, str in Python2). This algorithm is particularly generalizeable to
+    other languages, and should look similar to the above:
+
+        def checksum(data):
+            if len(data) & 1:
+                data = data + b'\0'
+            sum = 0
+            for i in range(0, len(data), 2):
+                sum += ord(data[i]) + (ord(data[i + 1]) << 8)
+            while (sum >> 16) > 0:
+                sum = (sum & 0xFFFF) + (sum >> 16)
+            return ~sum
+
+APPENDIX C: Ideas for Comparing Implementations/Telephone Rings
+
+    - Largest Ring
+
+    - Fastest time around ring (average hop speed)
+
+    - Fastest individual hop field
+
+    - Longest message
+
+    - Coolest transform
+
+    - Most interesting language/platform choice
+
+    - Most messageIds processed in a single run
+
+    - Most diversity of systems and/or platforms
+
+    - Nicest user interface
+
+    - Nicest stats display
+
