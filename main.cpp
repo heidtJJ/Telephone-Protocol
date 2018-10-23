@@ -50,6 +50,7 @@ bool receiveGreeting(const int& connectSocket, bool server);
 string serverFunction(const string& sourceIP, const int& sourcePort, const string& desinationIP, const int& destinationPort, const bool originator);
 void clientFunction(const string& sourceIP, const int& sourcePort, const string& desinationIP, const int& destinationPort, const bool originator, string& message);
 void initializeMessage(string& message, const string& fromHost, const string& fromPort, const string& toHost, const string& toPort);
+void appendMessageHeaders(string& message, const string& fromHost, const string& fromPort, const string& toHost, const string& toPort);
 
 // Retreives the data of a header in a message.
 string getHeaderData(const string& message, const string& headerName){
@@ -101,16 +102,16 @@ int main(int argc, char* argv[]){
     string destinationIP = destIpPortPair[0];
     int destPort = stoi(destIpPortPair[1]);
 
-    string transmitMessage = "";
     if(originator == "1"){
         // user is originator
+        string transmitMessage = "";
         clientFunction(sourceIP, sourcePort, destinationIP, destPort, true, transmitMessage);
         string received = serverFunction(sourceIP, sourcePort, destinationIP, destPort, true);
     }
     else {
         // user is not originator
         string received = serverFunction(sourceIP, sourcePort, destinationIP, destPort, false);
-        clientFunction(sourceIP, sourcePort, destinationIP, destPort, false, transmitMessage);
+        clientFunction(sourceIP, sourcePort, destinationIP, destPort, false, received);
     }
 
     return 0;
@@ -123,7 +124,6 @@ std::string int_to_hexStr( T i ) {
   std::stringstream stream;
   stream << std::setfill ('0') << std::setw(sizeof(T)*2) 
          << std::hex << i;
-    cout << "int_to_hexStr\n\n\n";
   return stream.str();
 }
 
@@ -266,22 +266,15 @@ string validateHeader(const string& message){
     // Validate checksum.
     string receivedCheckSumStr = getHeaderData(message, "MessageChecksum");
     string messageData = getMessageData(message);
-    cout << "messageData: " << messageData << endl;
+
     // Recompute checksum.
     uint16_t actualCheckSum = checksum((void*)messageData.c_str(), messageData.length()); 
     string actualCheckSumStr = int_to_hexStr(actualCheckSum);
-    // Compare checksums.
 
-    if(actualCheckSumStr == receivedCheckSumStr) cout << "YAS\n";
-    else{
-        cout << "Recieved: " << receivedCheckSumStr << endl;
-        cout << "Actual: " << messageData << endl;
-    }
+    // Compare checksums.
     if(actualCheckSumStr != receivedCheckSumStr
             || actualCheckSumStr.length() != 4
             || receivedCheckSumStr.length() != 4){
-
-        cout << actualCheckSumStr << " != " << receivedCheckSumStr << endl;
         errorMessage += "Checksum is not valid at hop " + getHeaderData(message, "Hop") + CRLF;
     }
 
@@ -435,7 +428,7 @@ string serverFunction(const string& sourceIP, const int& sourcePort,
 
     // Close connection socket.
     close(connectSocket);
-    cout << "Server closed connection." << endl << endl;
+    cout << "Server closed connection." << endl;
 
     cout << "Server function returning:\n" << buff << endl;
     return buff;
@@ -451,7 +444,8 @@ void clientFunction(const string& sourceIP, const int& sourcePort,
         initializeMessage(message, sourceIP, to_string(sourcePort), destinationIP, to_string(destinationPort));
     }
     else {
-        
+        // Add own headers to message.
+        appendMessageHeaders(message, sourceIP, to_string(sourcePort), destinationIP, to_string(destinationPort));
     }
     
     int connectSocket;
@@ -506,7 +500,7 @@ void clientFunction(const string& sourceIP, const int& sourcePort,
 
     // Send actual data to server. Start with headers.
     send(connectSocket, message.c_str(), message.length(), 0 ); 
-    cout << endl << "Client sent: " << message << endl;
+    cout << endl << "Client sent:\n" << message << endl;
 
     // Read either SUCCESS or WARN from server.
     char buffer[SUCCESS_LEN+1] = {'\0'}; 
@@ -547,7 +541,7 @@ string getCurrentTimestamp(){
 
 // **************************************************************************************************
 
-string getHeaders(const string& fromHost, const string& fromPort, const string& toHost, const string& toPort){
+string getHeaders(const string& fromHost, const string& fromPort, const string& toHost, const string& toPort, const int& nextId){
     // Get system name.
     utsname name;
     if(uname(&name)) exit(-1);
@@ -557,7 +551,7 @@ string getHeaders(const string& fromHost, const string& fromPort, const string& 
     string timestamp = getCurrentTimestamp();
     string headers = "";
     headers += "Hop: 0\r\n";
-    headers += "MessageId: 1234\r\n";
+    headers += "MessageId: " + to_string(nextId) + "\r\n";
     headers += "FromHost: " + fromHost + ":" + fromPort + CRLF;
     headers += "ToHost: " + toHost + ":" + toPort + CRLF;
     headers += "System: " + sysname + "/" + sysrelease + CRLF;
@@ -570,7 +564,7 @@ string getHeaders(const string& fromHost, const string& fromPort, const string& 
 // **************************************************************************************************
 
 void initializeMessage(string& message, const string& fromHost, const string& fromPort, const string& toHost, const string& toPort){
-    string headers = getHeaders(fromHost, fromPort, toHost, toPort);
+    string headers = getHeaders(fromHost, fromPort, toHost, toPort, 1);
     message = headers;
 
     // Append checkSum.
@@ -581,4 +575,20 @@ void initializeMessage(string& message, const string& fromHost, const string& fr
     // Append data.
     message += messageData;
     message += EOM;
+}
+
+// **************************************************************************************************
+
+void appendMessageHeaders(string& message, const string& fromHost, const string& fromPort, const string& toHost, const string& toPort){
+    int nextId = stoi( getHeaderData(message, "MessageId") )+1;
+    string headers = getHeaders(fromHost, fromPort, toHost, toPort, nextId);
+
+    // Append checkSum.
+    string messageData = getMessageData(message);
+    uint16_t checkSum = checksum((void*)messageData.c_str(), messageData.length());
+    headers += "MessageChecksum: " + int_to_hexStr(checkSum) + CRLF;
+    
+    // Append data.
+    message = headers + message;
+    cout << "New message:\n" << message << endl;
 }
