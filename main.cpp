@@ -9,27 +9,34 @@
 #include <unistd.h> 
 #include <vector> 
 #include <sstream> 
+#include <sys/utsname.h>
+#include <sys/time.h>
 
 using std::cout;
 using std::cin;
 using std::endl;
 using std::string;
 using std::vector;
+using std::to_string;
 
 // Constants 
 #define PROPER_GREETING "HELLO 1.7"
 #define PROPER_GREETING_LEN 9
 #define DATA "DATA"
 #define DATA_LEN 4
+#define CRLF \r\n
 
 // Utility functions
 uint16_t checksum(void *data, size_t size);
 vector<string> getIpAndPort(const string& hostName);
-bool receiveGreeting(const int& connectSocket);
+bool receiveGreeting(const int& connectSocket, bool server);
 
 // Server/Client
-void serverFunction(const string& sourceIP, const int& sourcePort, const string& desinationIP, const int& destinationPort);
-void clientFunction(const string& sourceIP, const int& sourcePort, const string& desinationIP, const int& destinationPort);
+void serverFunction(const string& sourceIP, const int& sourcePort, const string& desinationIP, const int& destinationPort, const bool originator);
+void clientFunction(const string& sourceIP, const int& sourcePort, const string& desinationIP, const int& destinationPort, const bool originator);
+void initializeMessage(string& transmitMessage, const string& fromHost, const string& toHost);
+
+// System name
 
 int main(int argc, char* argv[]){
     if(argc != 4){
@@ -57,18 +64,23 @@ int main(int argc, char* argv[]){
         cout << "$ ./telephone <originator> <source> <dest>" << endl;
         exit(EXIT_FAILURE);
     }
+    string sourceIP = sourceIpPortPair[0];
     int sourcePort = stoi(sourceIpPortPair[1]);
+
+    string destinationIP = destIpPortPair[0];
     int destPort = stoi(destIpPortPair[1]);
 
     if(originator == "1"){
         // user is originator
-        clientFunction(sourceIpPortPair[0], sourcePort, destIpPortPair[0], destPort);
-        serverFunction(sourceIpPortPair[0], sourcePort, destIpPortPair[0], destPort);
+        string transmitMessage = "";
+        initializeMessage(transmitMessage, sourceIP, destinationIP);
+        clientFunction(sourceIP, sourcePort, destinationIP, destPort, true);
+        serverFunction(sourceIP, sourcePort, destinationIP, destPort, true);
     }
     else {
-        // user is not originator        
-        serverFunction(sourceIpPortPair[0], sourcePort, destIpPortPair[0], destPort);
-        clientFunction(sourceIpPortPair[0], sourcePort, destIpPortPair[0], destPort);
+        // user is not originator
+        serverFunction(sourceIP, sourcePort, destinationIP, destPort, false);
+        clientFunction(sourceIP, sourcePort, destinationIP, destPort, false);
     }
 
     return 0;
@@ -130,10 +142,12 @@ vector<string> getIpAndPort(const string& hostName){
 
 // **************************************************************************************************
 
-bool sendGreeting(const int& connectSocket){
+bool sendGreeting(const int& connectSocket, bool server){
     int result = send(connectSocket, PROPER_GREETING, PROPER_GREETING_LEN, 0 ); 
+    if(server) cout << "Server sent: " << PROPER_GREETING << " -> " << PROPER_GREETING_LEN << endl;
+    else cout << "Client sent: " << PROPER_GREETING << " -> " << PROPER_GREETING_LEN << endl;
     if(result != PROPER_GREETING_LEN){
-        perror("Greeting could not be sent."); 
+        cout << "Greeting could not be sent." << endl; 
         return false;
     }
     return true;
@@ -141,10 +155,11 @@ bool sendGreeting(const int& connectSocket){
 
 // **************************************************************************************************
 
-bool sendDataString(const int& connectSocket){
+bool sendDATAString(const int& connectSocket){
     int result = send(connectSocket, DATA, DATA_LEN, 0); 
+    cout << "Client sent: " << DATA << " -> " << DATA_LEN << endl;
     if(result != DATA_LEN){
-        perror("DATA could not be sent."); 
+        cout << "DATA could not be sent." << endl; 
         return false;
     }
     return true;
@@ -156,9 +171,10 @@ bool sendDataString(const int& connectSocket){
     Server will be using this function to acknowledge that
     data will be sent next from client. 
  */
-bool receiveDataString(const int& connectSocket){
+bool receiveDATAString(const int& connectSocket){
     char buffer[1024] = {0}; 
     int numBytesRead = read(connectSocket, buffer, 1024);
+    cout << "Server read: " << buffer << " -> " << numBytesRead << endl;
     if(numBytesRead != DATA_LEN){
         perror("DATA string unsuccessfully received."); 
         return false;
@@ -168,7 +184,7 @@ bool receiveDataString(const int& connectSocket){
     memset(buffer, '\0', 1024); 
 
     if(greeting != DATA){
-        // send(connectSocket, "QUIT", 4, 0); 
+        send(connectSocket, "QUIT", 4, 0); 
         perror("DATA string unsuccessfully received."); 
         return false; 
     }
@@ -177,11 +193,16 @@ bool receiveDataString(const int& connectSocket){
 
 // **************************************************************************************************
 
-bool receiveGreeting(const int& connectSocket){
+bool receiveGreeting(const int& connectSocket, bool server){
     char buffer[1024] = {0}; 
     int numBytesRead = read(connectSocket, buffer, 1024);
+    if(server)
+        cout << "server read: " << buffer << " -> " << numBytesRead << endl;
+    else 
+        cout << "client read: " << buffer << " -> " << numBytesRead << endl;
+
     if(numBytesRead != PROPER_GREETING_LEN){
-        perror("Telephone version is unsupported."); 
+        cout << "Telephone version is unsupported. numBytesRead != PROPER_GREETING_LEN" << endl; 
         close(connectSocket); 
         return false;
     }
@@ -190,17 +211,18 @@ bool receiveGreeting(const int& connectSocket){
     if(greeting != PROPER_GREETING){
         // Version is unsupported.
         send(connectSocket, "QUIT", 4, 0); 
-        perror("Telephone version is unsupported."); 
+        cout << "Telephone version is unsupported. greeting != PROPER_GREETING" << endl; 
         close(connectSocket); 
         return false; 
     }
+    memset(buffer, '\0', 1024);
     return true;
 }
 
 // **************************************************************************************************
 
 void serverFunction(const string& sourceIP, const int& sourcePort, 
-                        const string& desinationIP, const int& destinationPort){
+                        const string& desinationIP, const int& destinationPort, const bool originator){
     int doorbellSocket;
     int connectSocket;
 
@@ -220,8 +242,8 @@ void serverFunction(const string& sourceIP, const int& sourcePort,
     } 
        
     /* This helps in manipulating options for the socket referred by the file descriptor 
-        sockfd. This is completely optional, but it helps in reuse of address and port. 
-        Prevents error such as: “address already in use”.
+       sockfd. This is completely optional, but it helps in reuse of address and port. 
+       Prevents error such as: “address already in use”.
     */
     if (setsockopt(doorbellSocket, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) { 
         perror("Server can not setsockopt."); 
@@ -243,30 +265,31 @@ void serverFunction(const string& sourceIP, const int& sourcePort,
     }
 
     // Server is first to send greeting. Send greeting to client.
-    bool success = sendGreeting(connectSocket);
+    bool success = sendGreeting(connectSocket, 1);
     if(!success) exit(EXIT_FAILURE);// Error is already printed.
 
     // Receive greeting back from client (or acknowledge error).
-    success = receiveGreeting(connectSocket);
+    success = receiveGreeting(connectSocket, true);
     if(!success) exit(EXIT_FAILURE);// Error is already printed.
 
     // Receive "DATA" from client.
-    success = receiveDataString(connectSocket);
+    success = receiveDATAString(connectSocket);
     if(!success){
         // Handle "DATA" not properly received.
+        cout << "DATA not properly recieved from server." << endl;
     }
+    
 
-    cout << "doneserv";
-
+    cout << "Server done" << endl << endl;
+    close(connectSocket);
 }
 
 // **************************************************************************************************
 
 void clientFunction(const string& sourceIP, const int& sourcePort, 
-                        const string& desinationIP, const int& destinationPort){
-    int connectSocket = 0;
+                        const string& desinationIP, const int& destinationPort, const bool originator){
+    int connectSocket;
     sockaddr_in serverAddress; 
-
     if ((connectSocket = socket(AF_INET, SOCK_STREAM, 0)) < 0) 
     { 
         cout << "Socket creation error" << endl; 
@@ -285,28 +308,80 @@ void clientFunction(const string& sourceIP, const int& sourcePort,
     if(inet_pton(AF_INET, desinationIP.c_str(), &serverAddress.sin_addr)<=0)  
     { 
         cout << "Invalid address/ Address not supported" << endl;
+        close(connectSocket);
         exit(EXIT_FAILURE);
     }
 
     if (connect(connectSocket, (struct sockaddr *)&serverAddress, sizeof(serverAddress)) < 0)
     {
         cout << "Connection Failed" << endl; 
+        close(connectSocket);
         exit(EXIT_FAILURE);
     }
 
     // Connected to server socket. Wait for greeting.
-    bool success = receiveGreeting(connectSocket);
+    bool success = receiveGreeting(connectSocket, false);
     if(!success) exit(EXIT_FAILURE);// Error is already printed.
 
     // Acknowledge server by sending back greeting.
-    success = sendGreeting(connectSocket);
+    success = sendGreeting(connectSocket, 0);
     if(!success) exit(EXIT_FAILURE);// Error is already printed.
-
-    // Send "DATA" to server
-    success = sendDataString(connectSocket);
+    
+    // Send "DATA" to server.
+    success = sendDATAString(connectSocket);
     if(!success) {
         // Handle "DATA" not able to be sent.
+        close(connectSocket);
+        cout << "DATA could not be sent from client to server." << endl;
+        exit(EXIT_FAILURE);
     }
+/*
+    // Send actual data to server. Start with headers.
+    string curHeader = "Hop: ";
+    if(originator) curHeader += 
+    send(connectSocket, PROPER_GREETING, PROPER_GREETING_LEN, 0 ); 
+*/
+    close(connectSocket);
 
-    cout << "doneclinet";
+    cout << "Client done" << endl<< endl;
+}
+
+string getCurrentTimestamp(){
+    // current date/time based on current system
+    timeval tvTime;
+    gettimeofday(&tvTime, NULL);
+
+    int iTotal_seconds = tvTime.tv_sec;
+    struct tm *ptm = localtime((const time_t *) & iTotal_seconds);
+
+    int iHour = ptm->tm_hour;;
+    int iMinute = ptm->tm_min;
+    int iSecond = ptm->tm_sec;
+    int iMilliSec = tvTime.tv_usec / 1000;
+    return to_string(iHour) + ":" + to_string(iMinute) + ":" + to_string(iSecond) + ":" + to_string(iMilliSec);
+}
+
+void initializeMessage(string& transmitMessage, const string& fromHost, const string& toHost){
+	
+    // Get system name.
+    utsname name;
+    if(uname(&name)) exit(-1);
+    string sysname = name.sysname;
+    string sysrelease = name.sysname;
+    
+    string timestamp = getCurrentTimestamp();
+
+    transmitMessage += "Hop: 0\r\n";
+    transmitMessage += "MessageId: 1234\r\n";
+    transmitMessage += "FromHost: " + fromHost + "\r\n";
+    transmitMessage += "ToHost: " + toHost + "\r\n";
+    transmitMessage += "System: " + sysname + "/" + sysrelease + "\r\n";
+    transmitMessage += "Program: C++11/GCC\r\n";
+    transmitMessage += "Author: Jared Heidt\r\n";
+    transmitMessage += "SendingTimestamp: " + timestamp + "\r\n";
+
+
+	printf("Your computer's OS is %s@%s\n", name.sysname, name.release);
+
+
 }
