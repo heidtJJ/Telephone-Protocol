@@ -49,7 +49,7 @@ bool receiveGreeting(const int& connectSocket, bool server);
 // Server/Client
 string serverFunction(const string& sourceIP, const int& sourcePort, const string& desinationIP, const int& destinationPort, const bool originator);
 void clientFunction(const string& sourceIP, const int& sourcePort, const string& desinationIP, const int& destinationPort, const bool originator, string& message);
-void initializeMessage(string& transmitMessage, const string& fromHost, const string& fromPort, const string& toHost, const string& toPort);
+void initializeMessage(string& message, const string& fromHost, const string& fromPort, const string& toHost, const string& toPort);
 
 // Retreives the data of a header in a message.
 string getHeaderData(const string& message, const string& headerName){
@@ -123,12 +123,13 @@ std::string int_to_hexStr( T i ) {
   std::stringstream stream;
   stream << std::setfill ('0') << std::setw(sizeof(T)*2) 
          << std::hex << i;
+    cout << "int_to_hexStr\n\n\n";
   return stream.str();
 }
 
 // **************************************************************************************************
 
-uint16_t checksum(void *data, size_t size) {
+uint16_t checksum(void* data, size_t size) {
     uint32_t sum = 0;
     /* Cast to uint16_t for pointer arithmetic */
     uint16_t* data16 = (uint16_t*) data;
@@ -265,52 +266,61 @@ string validateHeader(const string& message){
     // Validate checksum.
     string receivedCheckSumStr = getHeaderData(message, "MessageChecksum");
     string messageData = getMessageData(message);
+    cout << "messageData: " << messageData << endl;
     // Recompute checksum.
     uint16_t actualCheckSum = checksum((void*)messageData.c_str(), messageData.length()); 
     string actualCheckSumStr = int_to_hexStr(actualCheckSum);
     // Compare checksums.
+
+    if(actualCheckSumStr == receivedCheckSumStr) cout << "YAS\n";
+    else{
+        cout << "Recieved: " << receivedCheckSumStr << endl;
+        cout << "Actual: " << messageData << endl;
+    }
     if(actualCheckSumStr != receivedCheckSumStr
             || actualCheckSumStr.length() != 4
             || receivedCheckSumStr.length() != 4){
-        errorMessage += "Checksum is not valid at hop " + getHeaderData(message, "Hop") +  + CRLF;
+
+        cout << actualCheckSumStr << " != " << receivedCheckSumStr << endl;
+        errorMessage += "Checksum is not valid at hop " + getHeaderData(message, "Hop") + CRLF;
     }
 
     // Check for all valid headers.
     // Hop
     if(getHeaderData(message, "Hop").empty())
-        errorMessage += "Warning: Missing required header - Hop" + CRLF;
+        errorMessage += "Warning: Missing required header - Hop" CRLF;
 
     // MessageId
     if(getHeaderData(message, "MessageId").empty())
-        errorMessage += "Warning: Missing required header - MessageId" + CRLF;
+        errorMessage += "Warning: Missing required header - MessageId" CRLF;
     
     // FromHost
     if(getHeaderData(message, "FromHost").empty())
-        errorMessage += "Warning: Missing required header - FromHost" + CRLF;
+        errorMessage += "Warning: Missing required header - FromHost" CRLF;
     
     // ToHost
     if(getHeaderData(message, "ToHost").empty())
-        errorMessage += "Warning: Missing required header - ToHost" + CRLF;
+        errorMessage += "Warning: Missing required header - ToHost" CRLF;
     
     // System
     if(getHeaderData(message, "System").empty())
-        errorMessage += "Warning: Missing required header - System" + CRLF;
+        errorMessage += "Warning: Missing required header - System" CRLF;
     
     // Program
     if(getHeaderData(message, "Program").empty())
-        errorMessage += "Warning: Missing required header - Program" + CRLF;
+        errorMessage += "Warning: Missing required header - Program" CRLF;
     
     // Author
     if(getHeaderData(message, "Author").empty())
-        errorMessage += "Warning: Missing required header - Author" + CRLF;
+        errorMessage += "Warning: Missing required header - Author" CRLF;
     
     // SendingTimestamp
     if(getHeaderData(message, "SendingTimestamp").empty())
-        errorMessage += "Warning: Missing required header - SendingTimestamp" + CRLF;
+        errorMessage += "Warning: Missing required header - SendingTimestamp" CRLF;
     
     // MessageChecksum
     if(getHeaderData(message, "MessageChecksum").empty())
-        errorMessage += "Warning: Missing required header - MessageChecksum" + CRLF;
+        errorMessage += "Warning: Missing required header - MessageChecksum" CRLF;
     
     // Search for duplicate messageId
     std::unordered_set<string> messageIds;
@@ -326,7 +336,7 @@ string validateHeader(const string& message){
         
         // Check for duplicated ID.
         if(messageIds.find(id) != messageIds.end()){
-            errorMessage += "Warning: Duplicate message ID - " + id + CRLF
+            errorMessage += "Warning: Duplicate message ID - " + id + CRLF;
             break;
         }
         // Insert current id into the messageIds set.
@@ -427,20 +437,21 @@ string serverFunction(const string& sourceIP, const int& sourcePort,
     close(connectSocket);
     cout << "Server closed connection." << endl << endl;
 
+    cout << "Server function returning:\n" << buff << endl;
     return buff;
 }
 
 // **************************************************************************************************
 
 void clientFunction(const string& sourceIP, const int& sourcePort, 
-                        const string& desinationIP, const int& destinationPort, 
+                        const string& destinationIP, const int& destinationPort, 
                         const bool originator, string& message){
 
     if(originator){
-        initializeMessage(transmitMessage, sourceIP, sourceIpPortPair[1], destinationIP, destIpPortPair[1]);
+        initializeMessage(message, sourceIP, to_string(sourcePort), destinationIP, to_string(destinationPort));
     }
     else {
-
+        
     }
     
     int connectSocket;
@@ -460,7 +471,7 @@ void clientFunction(const string& sourceIP, const int& sourcePort,
     serverAddress.sin_family = AF_INET;
 
     // Convert IPv4 and IPv6 addresses from text to binary form 
-    if(inet_pton(AF_INET, desinationIP.c_str(), &serverAddress.sin_addr)<=0)  
+    if(inet_pton(AF_INET, destinationIP.c_str(), &serverAddress.sin_addr)<=0)  
     { 
         cout << "Invalid address/ Address not supported" << endl;
         close(connectSocket);
@@ -558,14 +569,16 @@ string getHeaders(const string& fromHost, const string& fromPort, const string& 
 
 // **************************************************************************************************
 
-void initializeMessage(string& transmitMessage, const string& fromHost, const string& fromPort, const string& toHost, const string& toPort){
+void initializeMessage(string& message, const string& fromHost, const string& fromPort, const string& toHost, const string& toPort){
     string headers = getHeaders(fromHost, fromPort, toHost, toPort);
-    transmitMessage = headers;
-    transmitMessage += "Hello! You're receiving a message from the telephone game!";
+    message = headers;
 
-    uint16_t checkSum = checksum((void*)message.c_str(), message.length());
-    transmitMessage += "MessageChecksum: " + int_to_hexStr(checkSum) + CRLF;
-    transmitMessage += CRLF;
-    transmitMessage += message;
-    transmitMessage += EOM;
+    // Append checkSum.
+    string messageData = "Hello! You're receiving a message from the telephone game!";
+    uint16_t checkSum = checksum((void*)messageData.c_str(), messageData.length());
+    message += "MessageChecksum: " + int_to_hexStr(checkSum) + CRLF CRLF;
+    
+    // Append data.
+    message += messageData;
+    message += EOM;
 }
