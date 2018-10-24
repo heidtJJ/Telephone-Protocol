@@ -40,35 +40,42 @@ using std::stringstream;
 #define QUIT_LEN 4
 #define GOODBYE "GOODBYE"
 #define GOODBYE_LEN 7
+#define PROGRAM "Program"
+#define PROGRAM_LEN 7
+#define PLATFORM "System"
+#define PLATFORM_LEN 6
+#define TIMESTAMP "SendingTimestamp"
+#define TIMESTAMP_LEN 16
+#define HOP "Hop"
+#define HOP_LEN 3
 
-// Utility functions
-uint16_t checksum(void *data, size_t size);
-vector<string> getIpAndPort(const string& hostName);
-bool receiveGreeting(const int& connectSocket, bool server);
-
-// Server/Client
+// Server and Client.
+void clientFunction(const string& sourceIP, const string& sourcePort, const string& desinationIP, const string& destinationPort, const bool originator, string& message);
 string serverFunction(const string& sourceIP, const int& sourcePort, const string& desinationIP, const int& destinationPort, const bool originator);
-void clientFunction(const string& sourceIP, const int& sourcePort, const string& desinationIP, const int& destinationPort, const bool originator, string& message);
-void initializeMessage(string& message, const string& fromHost, const string& fromPort, const string& toHost, const string& toPort);
+
+// General Utility Functions.
+vector<string> getIpAndPort(const string& hostName);
+uint16_t checksum(void* data, size_t size);
+string int_to_hexStr(uint16_t i);
+string getCurrentTimestamp();
+
+// Validation Utility Functions.
+string validateHeader(const string& message);
+
+// Message Sending Utility Functions
+bool receiveGreeting(const int& connectSocket, bool server);
+bool sendGreeting(const int& connectSocket, bool server);
+bool receiveDATAString(const int& connectSocket);
+bool sendDATAString(const int& connectSocket);
+
+// Header Manipulation Utility Functions
 void appendMessageHeaders(string& message, const string& fromHost, const string& fromPort, const string& toHost, const string& toPort);
+void initializeMessage(string& message, const string& fromHost, const string& fromPort, const string& toHost, const string& toPort);
+string getHeaders(const string& fromHost, const string& fromPort, const string& toHost, const string& toPort, const int& nextId, const int& nextHop);
+string getHeaderData(const string& message, const string& headerName);
+string getMessageData(const string& message);
+void printStatistics(const string& received);
 
-// Retreives the data of a header in a message.
-string getHeaderData(const string& message, const string& headerName){
-    if(message.empty()) return message;
-    size_t headerPosition = message.find(headerName);
-    if(headerPosition == string::npos) return "";
-    size_t endOfHeaderPosition = message.find(CRLF, headerPosition+1);
-    // +2 for ':' and ' '
-    return message.substr(headerPosition + headerName.length()+2, endOfHeaderPosition-(headerPosition + headerName.length()+2));
-}
-
-string getMessageData(const string& message){
-    if(message.empty()) return message;
-    size_t startOfMessage = message.find("\r\n\r\n")+4;
-    if(startOfMessage == string::npos) return "";
-    size_t endOfMessage = message.length()-5;
-    return message.substr(startOfMessage, endOfMessage - startOfMessage);
-}
 
 int main(int argc, char* argv[]){
     if(argc != 4){
@@ -96,250 +103,26 @@ int main(int argc, char* argv[]){
         cout << "$ ./telephone <originator> <source> <dest>" << endl;
         exit(EXIT_FAILURE);
     }
-    string sourceIP = sourceIpPortPair[0];
     int sourcePort = stoi(sourceIpPortPair[1]);
-
-    string destinationIP = destIpPortPair[0];
     int destPort = stoi(destIpPortPair[1]);
 
     if(originator == "1"){
         // user is originator
         string transmitMessage = "";
-        clientFunction(sourceIP, sourcePort, destinationIP, destPort, true, transmitMessage);
-        string received = serverFunction(sourceIP, sourcePort, destinationIP, destPort, true);
+        clientFunction(sourceIpPortPair[0], sourceIpPortPair[1], destIpPortPair[0], destIpPortPair[1], true, transmitMessage);
+        string received = serverFunction(sourceIpPortPair[0], sourcePort, destIpPortPair[0], destPort, true);
+        cout << received << endl;
+        printStatistics(received);
+        // Find statistics of final message.
     }
     else {
         // user is not originator
-        string received = serverFunction(sourceIP, sourcePort, destinationIP, destPort, false);
-        clientFunction(sourceIP, sourcePort, destinationIP, destPort, false, received);
+        string received = serverFunction(sourceIpPortPair[0], sourcePort, destIpPortPair[0], destPort, false);
+        cout << received << endl;
+        clientFunction(sourceIpPortPair[0], sourceIpPortPair[1], destIpPortPair[0], destIpPortPair[1], false, received);
     }
 
     return 0;
-}
-
-// **************************************************************************************************
-
-template< typename T >
-std::string int_to_hexStr( T i ) {
-  std::stringstream stream;
-  stream << std::setfill ('0') << std::setw(sizeof(T)*2) 
-         << std::hex << i;
-  return stream.str();
-}
-
-// **************************************************************************************************
-
-uint16_t checksum(void* data, size_t size) {
-    uint32_t sum = 0;
-    /* Cast to uint16_t for pointer arithmetic */
-    uint16_t* data16 = (uint16_t*) data;
-
-    while(size > 0) {
-        sum += *data16++;
-        size -= 2;
-    }
-
-    /* For the extraneous byte, if any: */
-    if(size > 0) 
-        sum += *((uint8_t *) data16);
-
-    /* Fold the sum as needed */
-    while(sum >> 16) 
-        sum = (sum & 0xFFFF) + (sum >> 16);
-
-    /* One's complement is binary inversion: */
-    return ~sum;
-}
-
-// **************************************************************************************************
-
-vector<string> getIpAndPort(const string& hostName){
-    vector<string> ipPortPair;
-
-    size_t colonPos = hostName.find(':');
-    if(colonPos != std::string::npos)
-    {
-        std::string hostPart = hostName.substr(0, colonPos);
-        std::string portPart = hostName.substr(colonPos+1);
-
-        std::stringstream parser(portPart);
-        int port = 0;
-        if( parser >> port ) {
-            // hostname in hostPart, port in port
-            ipPortPair.push_back(hostPart);
-            ipPortPair.push_back(portPart);
-            // could check port >= 0 and port < 65536 here
-        }
-        else {
-            // port not convertible to an integer
-            return ipPortPair;
-        }
-    }
-    else {
-        // Missing port?
-        return ipPortPair;
-    }
-}
-
-// **************************************************************************************************
-
-bool sendGreeting(const int& connectSocket, bool server){
-    int result = send(connectSocket, PROPER_GREETING, PROPER_GREETING_LEN, 0 ); 
-    if(server) cout << "Server sent: " << PROPER_GREETING << " -> " << PROPER_GREETING_LEN << endl;
-    else cout << "Client sent: " << PROPER_GREETING << " -> " << PROPER_GREETING_LEN << endl;
-    if(result != PROPER_GREETING_LEN){
-        cout << "Greeting could not be sent." << endl; 
-        return false;
-    }
-    return true;
-}
-
-// **************************************************************************************************
-
-bool sendDATAString(const int& connectSocket){
-    int result = send(connectSocket, DATA, DATA_LEN, 0); 
-    cout << "Client sent: " << DATA << " -> " << DATA_LEN << endl;
-    if(result != DATA_LEN){
-        cout << "DATA could not be sent." << endl; 
-        return false;
-    }
-    return true;
-}
-
-// **************************************************************************************************
-
-/*
-    Server will be using this function to acknowledge that
-    data will be sent next from client. 
- */
-bool receiveDATAString(const int& connectSocket){
-    char buffer[DATA_LEN+1] = {'\0'}; 
-    int numBytesRead = read(connectSocket, buffer, DATA_LEN);
-    cout << "Server read: " << buffer << " -> " << numBytesRead << endl;
-    if(numBytesRead != DATA_LEN){
-        perror("DATA string unsuccessfully received."); 
-        return false;
-    }
-
-    string greeting = buffer;
-    if(greeting != DATA){
-        send(connectSocket, "QUIT", 4, 0); 
-        perror("DATA string unsuccessfully received."); 
-        return false; 
-    }
-    return true;
-}
-
-// **************************************************************************************************
-
-bool receiveGreeting(const int& connectSocket, bool server){
-    char buffer[PROPER_GREETING_LEN+1] = {'\0'};
-    int numBytesRead = read(connectSocket, buffer, PROPER_GREETING_LEN);
-    if(server)
-        cout << "server read: " << buffer << " -> " << numBytesRead << endl;
-    else 
-        cout << "client read: " << buffer << " -> " << numBytesRead << endl;
-
-    if(numBytesRead != PROPER_GREETING_LEN){
-        cout << "Telephone version is unsupported. numBytesRead != PROPER_GREETING_LEN" << endl; 
-        close(connectSocket); 
-        return false;
-    }
-
-    string greeting = buffer;
-    if(greeting != PROPER_GREETING){
-        // Version is unsupported.
-        send(connectSocket, "QUIT", 4, 0); 
-        cout << "Telephone version is unsupported. greeting != PROPER_GREETING" << endl; 
-        close(connectSocket); 
-        return false; 
-    }
-    return true;
-}
-
-// **************************************************************************************************
-
-string validateHeader(const string& message){
-    string errorMessage = "";
-    cout << "Server read: " << message << endl;
-
-    // Validate checksum.
-    string receivedCheckSumStr = getHeaderData(message, "MessageChecksum");
-    string messageData = getMessageData(message);
-
-    // Recompute checksum.
-    uint16_t actualCheckSum = checksum((void*)messageData.c_str(), messageData.length()); 
-    string actualCheckSumStr = int_to_hexStr(actualCheckSum);
-
-    // Compare checksums.
-    if(actualCheckSumStr != receivedCheckSumStr
-            || actualCheckSumStr.length() != 4
-            || receivedCheckSumStr.length() != 4){
-        errorMessage += "Checksum is not valid at hop " + getHeaderData(message, "Hop") + CRLF;
-    }
-
-    // Check for all valid headers.
-    // Hop
-    if(getHeaderData(message, "Hop").empty())
-        errorMessage += "Warning: Missing required header - Hop" CRLF;
-
-    // MessageId
-    if(getHeaderData(message, "MessageId").empty())
-        errorMessage += "Warning: Missing required header - MessageId" CRLF;
-    
-    // FromHost
-    if(getHeaderData(message, "FromHost").empty())
-        errorMessage += "Warning: Missing required header - FromHost" CRLF;
-    
-    // ToHost
-    if(getHeaderData(message, "ToHost").empty())
-        errorMessage += "Warning: Missing required header - ToHost" CRLF;
-    
-    // System
-    if(getHeaderData(message, "System").empty())
-        errorMessage += "Warning: Missing required header - System" CRLF;
-    
-    // Program
-    if(getHeaderData(message, "Program").empty())
-        errorMessage += "Warning: Missing required header - Program" CRLF;
-    
-    // Author
-    if(getHeaderData(message, "Author").empty())
-        errorMessage += "Warning: Missing required header - Author" CRLF;
-    
-    // SendingTimestamp
-    if(getHeaderData(message, "SendingTimestamp").empty())
-        errorMessage += "Warning: Missing required header - SendingTimestamp" CRLF;
-    
-    // MessageChecksum
-    if(getHeaderData(message, "MessageChecksum").empty())
-        errorMessage += "Warning: Missing required header - MessageChecksum" CRLF;
-    
-    // Search for duplicate messageId
-    std::unordered_set<string> messageIds;
-    size_t start = 0;
-    while(start >= 0 && start < message.length()){
-        // Find start index of the next message id.
-        start = message.find(MESSAGE_ID, start);
-        if(start == string::npos) break;
-        // Find the end index of this header.
-        size_t endOfHeaderPosition = message.find(CRLF, start+1);
-        // +1 for ':' and +1 ' '
-        string id = message.substr(start + MESSAGE_ID_LEN+2, endOfHeaderPosition-(start + MESSAGE_ID_LEN+2));
-        
-        // Check for duplicated ID.
-        if(messageIds.find(id) != messageIds.end()){
-            errorMessage += "Warning: Duplicate message ID - " + id + CRLF;
-            break;
-        }
-        // Insert current id into the messageIds set.
-        messageIds.insert(id);
-        ++start;
-    }
-
-    cout << "Error Message: " << errorMessage << endl;
-    cout << "End of validation" << endl;
-    return errorMessage;
 }
 
 // **************************************************************************************************
@@ -400,7 +183,9 @@ string serverFunction(const string& sourceIP, const int& sourcePort,
     if(!success){
         // Handle "DATA" not properly received.
         cout << "DATA not properly recieved from server." << endl;
+        exit(EXIT_FAILURE);
     }
+
     // Read data from client
     char buffer[1024] = {'\0'}; 
     read(connectSocket, buffer, 1024);
@@ -410,42 +195,34 @@ string serverFunction(const string& sourceIP, const int& sourcePort,
     string errorMessage = validateHeader(buff);
     if(errorMessage.empty()){
         send(connectSocket, SUCCESS, SUCCESS_LEN, 0);
-        cout << "Server sent SUCCESS" << endl;
     }
     else {
-        buff = "Warning: " + errorMessage + buff; 
+        buff = errorMessage + buff; 
         send(connectSocket, WARNING, WARNING_LEN, 0); 
-        cout << "Server sent WARNING" << endl;
     }
 
     // Read QUIT from client.
     read(connectSocket, buffer, QUIT_LEN);
-    cout << "Server read QUIT" << endl;
 
     // Send GOODBYE to client.
     send(connectSocket, GOODBYE, GOODBYE_LEN, 0); 
-    cout << "Server sent GOODBYE" << endl;
 
     // Close connection socket.
     close(connectSocket);
-    cout << "Server closed connection." << endl;
-
-    cout << "Server function returning:\n" << buff << endl;
     return buff;
 }
 
 // **************************************************************************************************
 
-void clientFunction(const string& sourceIP, const int& sourcePort, 
-                        const string& destinationIP, const int& destinationPort, 
+void clientFunction(const string& sourceIP, const string& sourcePort, 
+                        const string& destinationIP, const string& destinationPort, 
                         const bool originator, string& message){
-
     if(originator){
-        initializeMessage(message, sourceIP, to_string(sourcePort), destinationIP, to_string(destinationPort));
+        initializeMessage(message, sourceIP, sourcePort, destinationIP, destinationPort);
     }
     else {
         // Add own headers to message.
-        appendMessageHeaders(message, sourceIP, to_string(sourcePort), destinationIP, to_string(destinationPort));
+        appendMessageHeaders(message, sourceIP, sourcePort, destinationIP, destinationPort);
     }
     
     int connectSocket;
@@ -461,7 +238,7 @@ void clientFunction(const string& sourceIP, const int& sourcePort,
     /* the htons() function converts values between host and network byte orders. 
     There is a difference between big-endian and little-endian and network byte order
     depending on your machine and network protocol in use. */
-    serverAddress.sin_port = htons(destinationPort); 
+    serverAddress.sin_port = htons( atoi(destinationPort.c_str()) ); 
     serverAddress.sin_family = AF_INET;
 
     // Convert IPv4 and IPv6 addresses from text to binary form 
@@ -500,26 +277,238 @@ void clientFunction(const string& sourceIP, const int& sourcePort,
 
     // Send actual data to server. Start with headers.
     send(connectSocket, message.c_str(), message.length(), 0 ); 
-    cout << endl << "Client sent:\n" << message << endl;
 
     // Read either SUCCESS or WARN from server.
     char buffer[SUCCESS_LEN+1] = {'\0'}; 
     read(connectSocket, buffer, SUCCESS_LEN);
-    cout << "Client read " << buffer << endl;
     
     // Send QUIT to server.
     send(connectSocket, QUIT, QUIT_LEN, 0); 
-    cout << "Client sent " << QUIT << endl;
     
     // Reset buffer
     memset(buffer, '\0', SUCCESS_LEN+1);
 
     // Read either SUCCESS or WARN from server.
     read(connectSocket, buffer, GOODBYE_LEN);
-    cout << "Client read " << GOODBYE << endl;
 
-    int val = close(connectSocket);
-    cout << "Client closed connection: " << val << endl;
+    close(connectSocket);
+}
+
+
+// **************************************************************************************************
+
+string int_to_hexStr(uint16_t i){
+  stringstream stream;
+  stream << std::setfill ('0') << std::setw(sizeof(uint16_t)*2) 
+         << std::hex << i;
+  return stream.str();
+}
+
+// **************************************************************************************************
+
+uint16_t checksum(void* data, size_t size) {
+    uint32_t sum = 0;
+    /* Cast to uint16_t for pointer arithmetic */
+    uint16_t* data16 = (uint16_t*) data;
+
+    while(size > 0) {
+        sum += *data16++;
+        size -= 2;
+    }
+
+    /* For the extraneous byte, if any: */
+    if(size > 0) 
+        sum += *((uint8_t *) data16);
+
+    /* Fold the sum as needed */
+    while(sum >> 16) 
+        sum = (sum & 0xFFFF) + (sum >> 16);
+
+    /* One's complement is binary inversion: */
+    return ~sum;
+}
+
+// **************************************************************************************************
+
+vector<string> getIpAndPort(const string& hostName){
+    vector<string> ipPortPair;
+
+    size_t colonPos = hostName.find(':');
+    if(colonPos != std::string::npos)
+    {
+        std::string hostPart = hostName.substr(0, colonPos);
+        std::string portPart = hostName.substr(colonPos+1);
+
+        std::stringstream parser(portPart);
+        int port = 0;
+        if( parser >> port ) {
+            // hostname in hostPart, port in port
+            ipPortPair.push_back(hostPart);
+            ipPortPair.push_back(portPart);
+            // could check port >= 0 and port < 65536 here
+        }
+        else {
+            // port not convertible to an integer
+            return ipPortPair;
+        }
+    }
+    else {
+        // Missing port?
+        return ipPortPair;
+    }
+}
+
+// **************************************************************************************************
+
+// bool server is existent for debugging.
+bool sendGreeting(const int& connectSocket, bool server){
+    int result = send(connectSocket, PROPER_GREETING, PROPER_GREETING_LEN, 0 ); 
+    if(result != PROPER_GREETING_LEN){
+        cout << "Greeting could not be sent." << endl; 
+        return false;
+    }
+    return true;
+}
+
+// **************************************************************************************************
+
+bool sendDATAString(const int& connectSocket){
+    int result = send(connectSocket, DATA, DATA_LEN, 0); 
+    if(result != DATA_LEN){
+        cout << "DATA could not be sent." << endl; 
+        return false;
+    }
+    return true;
+}
+
+// **************************************************************************************************
+
+/*
+    Server will be using this function to acknowledge that
+    data will be sent next from client. 
+ */
+bool receiveDATAString(const int& connectSocket){
+    char buffer[DATA_LEN+1] = {'\0'}; 
+    int numBytesRead = read(connectSocket, buffer, DATA_LEN);
+    if(numBytesRead != DATA_LEN){
+        cout << "DATA string unsuccessfully received." << endl; 
+        return false;
+    }
+
+    string greeting = buffer;
+    if(greeting != DATA){
+        send(connectSocket, "QUIT", 4, 0); 
+        perror("DATA string unsuccessfully received."); 
+        return false; 
+    }
+    return true;
+}
+
+// **************************************************************************************************
+
+bool receiveGreeting(const int& connectSocket, bool server){
+    char buffer[PROPER_GREETING_LEN+1] = {'\0'};
+    int numBytesRead = read(connectSocket, buffer, PROPER_GREETING_LEN);
+    if(numBytesRead != PROPER_GREETING_LEN){
+        // Version is unsupported.
+        cout << "Telephone version is unsupported. numBytesRead != PROPER_GREETING_LEN" << endl; 
+        close(connectSocket); 
+        return false;
+    }
+
+    string greeting = buffer;
+    if(greeting != PROPER_GREETING){
+        // Version is unsupported.
+        send(connectSocket, "QUIT", 4, 0); 
+        cout << "Telephone version is unsupported. greeting != PROPER_GREETING" << endl; 
+        close(connectSocket); 
+        return false; 
+    }
+    return true;
+}
+
+// **************************************************************************************************
+
+string validateHeader(const string& message){
+    string errorMessage = "";
+
+    // Validate checksum.
+    string receivedCheckSumStr = getHeaderData(message, "MessageChecksum");
+    string messageData = getMessageData(message);
+
+    // Recompute checksum.
+    uint16_t actualCheckSum = checksum((void*)messageData.c_str(), messageData.length()); 
+    string actualCheckSumStr = int_to_hexStr(actualCheckSum);
+
+    // Compare checksums.
+    if(actualCheckSumStr != receivedCheckSumStr
+            || actualCheckSumStr.length() != 4
+            || receivedCheckSumStr.length() != 4){
+        errorMessage += "Checksum is not valid at hop " + getHeaderData(message, "Hop") + CRLF;
+    }
+
+    // Check for all valid headers.
+    // Hop
+    if(getHeaderData(message, "Hop").empty())
+        errorMessage += "Warning: Missing required header - Hop" CRLF;
+
+    // MessageId
+    if(getHeaderData(message, "MessageId").empty())
+        errorMessage += "Warning: Missing required header - MessageId" CRLF;
+    
+    // FromHost
+    if(getHeaderData(message, "FromHost").empty())
+        errorMessage += "Warning: Missing required header - FromHost" CRLF;
+    
+    // ToHost
+    if(getHeaderData(message, "ToHost").empty())
+        errorMessage += "Warning: Missing required header - ToHost" CRLF;
+    
+    // System
+    if(getHeaderData(message, "System").empty())
+        errorMessage += "Warning: Missing required header - System" CRLF;
+    
+    // Program
+    if(getHeaderData(message, "Program").empty())
+        errorMessage += "Warning: Missing required header - Program" CRLF;
+    
+    // Author
+    if(getHeaderData(message, "Author").empty())
+        errorMessage += "Warning: Missing required header - Author" CRLF;
+    
+    // SendingTimestamp
+    if(getHeaderData(message, "SendingTimestamp").empty())
+        errorMessage += "Warning: Missing required header - SendingTimestamp" CRLF;
+    
+    // MessageChecksum
+    if(getHeaderData(message, "MessageChecksum").empty())
+        errorMessage += "Warning: Missing required header - MessageChecksum" CRLF;
+    
+    /*
+    // Search for duplicate messageId
+    std::unordered_set<string> messageIds;
+    size_t start = 0;
+    while(start >= 0 && start < message.length()){
+        // Find start index of the next message id.
+        start = message.find(MESSAGE_ID, start);
+        if(start == string::npos) break;
+        // Find the end index of this header.
+        size_t endOfHeaderPosition = message.find(CRLF, start+1);
+        // +1 for ':' and +1 ' '
+        string id = message.substr(start + MESSAGE_ID_LEN+2, endOfHeaderPosition-(start + MESSAGE_ID_LEN+2));
+        
+        // Check for duplicated ID.
+        if(messageIds.find(id) != messageIds.end()){
+            errorMessage += "Warning: Duplicate message ID - " + id + CRLF;
+            break;
+        }
+        // Insert current id into the messageIds set.
+        messageIds.insert(id);
+        ++start;
+    }
+    */
+
+    return errorMessage;
 }
 
 // **************************************************************************************************
@@ -532,7 +521,7 @@ string getCurrentTimestamp(){
     int iTotal_seconds = tvTime.tv_sec;
     struct tm *ptm = gmtime((const time_t *) & iTotal_seconds);
 
-    int iHour = ptm->tm_hour;;
+    int iHour = ptm->tm_hour;
     int iMinute = ptm->tm_min;
     int iSecond = ptm->tm_sec;
     int iMilliSec = tvTime.tv_usec / 1000;
@@ -541,7 +530,8 @@ string getCurrentTimestamp(){
 
 // **************************************************************************************************
 
-string getHeaders(const string& fromHost, const string& fromPort, const string& toHost, const string& toPort, const int& nextId){
+string getHeaders(const string& fromHost, const string& fromPort, const string& toHost, 
+        const string& toPort, const string& nextId, const int& nextHop){
     // Get system name.
     utsname name;
     if(uname(&name)) exit(-1);
@@ -550,8 +540,8 @@ string getHeaders(const string& fromHost, const string& fromPort, const string& 
     
     string timestamp = getCurrentTimestamp();
     string headers = "";
-    headers += "Hop: 0\r\n";
-    headers += "MessageId: " + to_string(nextId) + "\r\n";
+    headers += "Hop: " + to_string(nextHop) + "\r\n";
+    headers += "MessageId: " + nextId + "\r\n";
     headers += "FromHost: " + fromHost + ":" + fromPort + CRLF;
     headers += "ToHost: " + toHost + ":" + toPort + CRLF;
     headers += "System: " + sysname + "/" + sysrelease + CRLF;
@@ -564,7 +554,7 @@ string getHeaders(const string& fromHost, const string& fromPort, const string& 
 // **************************************************************************************************
 
 void initializeMessage(string& message, const string& fromHost, const string& fromPort, const string& toHost, const string& toPort){
-    string headers = getHeaders(fromHost, fromPort, toHost, toPort, 1);
+    string headers = getHeaders(fromHost, fromPort, toHost, toPort, "1", 0);
     message = headers;
 
     // Append checkSum.
@@ -580,8 +570,9 @@ void initializeMessage(string& message, const string& fromHost, const string& fr
 // **************************************************************************************************
 
 void appendMessageHeaders(string& message, const string& fromHost, const string& fromPort, const string& toHost, const string& toPort){
-    int nextId = stoi( getHeaderData(message, "MessageId") )+1;
-    string headers = getHeaders(fromHost, fromPort, toHost, toPort, nextId);
+    string nextId = getHeaderData(message, MESSAGE_ID);
+    int nextHop = stoi( getHeaderData(message, "Hop") )+1;
+    string headers = getHeaders(fromHost, fromPort, toHost, toPort, nextId, nextHop);
 
     // Append checkSum.
     string messageData = getMessageData(message);
@@ -590,5 +581,179 @@ void appendMessageHeaders(string& message, const string& fromHost, const string&
     
     // Append data.
     message = headers + message;
-    cout << "New message:\n" << message << endl;
+}
+
+// **************************************************************************************************
+
+string getHeaderData(const string& message, const string& headerName){
+    if(message.empty()) return message;
+    size_t headerPosition = message.find(headerName);
+    if(headerPosition == string::npos) return "";
+    size_t endOfHeaderPosition = message.find(CRLF, headerPosition+1);
+    // +2 for ':' and ' '
+    return message.substr(headerPosition + headerName.length()+2, endOfHeaderPosition-(headerPosition + headerName.length()+2));
+}
+
+// **************************************************************************************************
+
+string getMessageData(const string& message){
+    if(message.empty()) return message;
+    size_t startOfMessage = message.find("\r\n\r\n")+4;
+    if(startOfMessage == string::npos) return "";
+    size_t endOfMessage = message.length()-5;
+    return message.substr(startOfMessage, endOfMessage - startOfMessage);
+}
+
+// **************************************************************************************************
+
+struct Time {
+    Time(int milli, int sec, int min, int hour) : 
+        milliseconds(milli), seconds(sec), minutes(min), hours(hour) {};
+    
+    // hr:mi:se:mss format
+    Time(const string& time) {
+        int startIdx = 0;
+        // Get hours
+        int semiColonIdx = time.find(':', startIdx);
+        hours = atoi(time.substr(startIdx, semiColonIdx).c_str());
+        
+        // Get minutes
+        startIdx = semiColonIdx+1;
+        semiColonIdx = time.find(':', startIdx);
+        minutes = atoi(time.substr(startIdx, semiColonIdx - startIdx).c_str());
+
+        // Get seconds
+        startIdx = semiColonIdx+1;
+        semiColonIdx = time.find(':', startIdx);
+        seconds = atoi(time.substr(startIdx, semiColonIdx - startIdx).c_str());
+
+        // Get milliseconds
+        startIdx = semiColonIdx+1;
+        semiColonIdx = time.find(':', startIdx);
+        milliseconds = atoi(time.substr(startIdx).c_str());
+
+    };    
+    int hours;
+    int milliseconds;
+    int seconds;
+    int minutes;
+}; 
+
+string differenceTimes(const Time& start, const Time& end){
+    unsigned int milliSecStart = start.milliseconds + start.seconds*1000 +
+            start.minutes*60*1000 + start.hours*3600*1000;
+    unsigned int milliSecEnd = end.milliseconds + end.seconds*1000 +
+            end.minutes*60*1000 + end.hours*3600*1000;   
+    int result = milliSecEnd - milliSecStart;
+    return to_string(result/1000*3600) + ":" + to_string(result/1000*60) + ":" + to_string(result/1000) + ":" + to_string(result%1000);
+}
+
+// **************************************************************************************************
+
+void printStatistics(const string& message){
+    // Print number of machines passed through.
+    int numMachinesVisited = 0;
+    size_t start = 0;
+    while(start >= 0 && start < message.length()){
+        // Find start index of the next message id.
+        start = message.find(MESSAGE_ID, start);
+        if(start == string::npos) break;
+        // Find the end index of this header.
+        size_t endOfHeaderPosition = message.find(CRLF, start+1);
+        // +1 for ':' and +1 ' '
+        string id = message.substr(start + MESSAGE_ID_LEN+2, endOfHeaderPosition-(start + MESSAGE_ID_LEN+2));
+        
+        ++numMachinesVisited;        
+        ++start;
+    }
+    cout << "Number of machines passed through: " << numMachinesVisited << endl;
+
+    // Print list of languages used.
+    std::unordered_set<string> languagesUsed;
+    start = 0;
+    while(start >= 0 && start < message.length()){
+        // Find start index of the next message id.
+        start = message.find(PROGRAM, start);
+        if(start == string::npos) break;
+        // Find the end index of this header.
+        size_t endOfHeaderPosition = message.find(CRLF, start+1);
+        
+        // +1 for ':' and +1 ' '
+        string programName = message.substr(start + PROGRAM_LEN+2, endOfHeaderPosition-(start + PROGRAM_LEN+2));
+        
+        // Insert current id into the messageIds set.
+        languagesUsed.insert(programName);
+        ++start;
+    }
+    cout << "Languages used: "; 
+    bool firstIt = true;
+    for(const string& programName : languagesUsed){
+        if(!firstIt){
+            cout << ", ";
+        }
+        cout << programName;
+        firstIt = false;
+    }
+    cout << endl;
+
+    // Get list of platforms used.
+    std::unordered_set<string> platformsUsed;
+    start = 0;
+    while(start >= 0 && start < message.length()){
+        // Find start index of the next message id.
+        start = message.find(PLATFORM, start);
+        if(start == string::npos) break;
+        // Find the end index of this header.
+        size_t endOfHeaderPosition = message.find(CRLF, start+1);
+        
+        // +1 for ':' and +1 ' '
+        string platformName = message.substr(start + PLATFORM_LEN+2, endOfHeaderPosition-(start + PLATFORM_LEN+2));
+        
+        // Insert current id into the messageIds set.
+        platformsUsed.insert(platformName);
+        ++start;
+    }
+    cout << "Platforms used: "; 
+    firstIt = true;
+    for(const string& platformName : platformsUsed){
+        if(!firstIt){
+            cout << ", ";
+        }
+        cout << platformName;
+        firstIt = false;
+    }
+    cout << endl;
+
+
+    // Get time spent at each hop.
+    int curHop = atoi(getHeaderData(message, HOP).c_str());
+
+    int end = 0;
+    end = message.find(TIMESTAMP, end);
+    if(end == string::npos)
+        cout << "STATS: TIMESTAMP ERROR" << endl;
+
+    start = 0; 
+    while(start >= 0 && start < message.length() && end >= 0 && end < message.length()){
+        start = end+1;
+        start = message.find(TIMESTAMP, start);
+        if(start == string::npos) break;
+        
+        // Find the end index of the end time header.
+        size_t end_endOfHeaderPosition = message.find(CRLF, end+1);
+        
+        // Find the end index of the start time header.
+        size_t start_endOfHeaderPosition = message.find(CRLF, start+1);
+        
+        // +1 for ':' and +1 ' '
+        string endTimeString = message.substr(end + TIMESTAMP_LEN+2, end_endOfHeaderPosition-(end + TIMESTAMP_LEN+2));
+        string startTimeString = message.substr(start + TIMESTAMP_LEN+2, start_endOfHeaderPosition-(start + TIMESTAMP_LEN+2));
+        
+        Time endTime(endTimeString);
+        Time startTime(startTimeString);
+
+        string diff = differenceTimes(startTime, endTime);
+        cout << "Time spent between hop " << curHop-- << " and hop " << curHop << " is " << diff << endl;
+        end = start;
+    }
 }
