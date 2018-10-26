@@ -24,22 +24,22 @@ using std::to_string;
 using std::stringstream;
 
 // Constants 
-#define PROPER_GREETING "HELLO 1.7"
-#define PROPER_GREETING_LEN 9
-#define DATA "DATA"
-#define DATA_LEN 4
+#define PROPER_GREETING "HELLO 1.7\r\n"
+#define PROPER_GREETING_LEN 11
+#define DATA "DATA\r\n"
+#define DATA_LEN 6
 #define CRLF "\r\n"
 #define EOM "\r\n.\r\n"
 #define MESSAGE_ID "MessageId"
 #define MESSAGE_ID_LEN 9
-#define SUCCESS "SUCCESS"
-#define SUCCESS_LEN 7
-#define WARNING "WARN"
-#define WARNING_LEN 4
-#define QUIT "QUIT"
-#define QUIT_LEN 4
-#define GOODBYE "GOODBYE"
-#define GOODBYE_LEN 7
+#define SUCCESS "SUCCESS\r\n"
+#define SUCCESS_LEN 9
+#define WARNING "WARN\r\n"
+#define WARNING_LEN 6
+#define QUIT "QUIT\r\n"
+#define QUIT_LEN 6
+#define GOODBYE "GOODBYE\r\n"
+#define GOODBYE_LEN 9
 #define PROGRAM "Program"
 #define PROGRAM_LEN 7
 #define PLATFORM "System"
@@ -111,7 +111,8 @@ int main(int argc, char* argv[]){
         string transmitMessage = "";
         clientFunction(sourceIpPortPair[0], sourceIpPortPair[1], destIpPortPair[0], destIpPortPair[1], true, transmitMessage);
         string received = serverFunction(sourceIpPortPair[0], sourcePort, destIpPortPair[0], destPort, true);
-        cout << received << endl;
+        cout << "Message: \n" << received << endl;
+        cout << "Statistics: \n";
         printStatistics(received);
         // Find statistics of final message.
     }
@@ -197,9 +198,10 @@ string serverFunction(const string& sourceIP, const int& sourcePort,
         send(connectSocket, SUCCESS, SUCCESS_LEN, 0);
     }
     else {
-        buff = errorMessage + buff; 
+        //buff = errorMessage + buff; 
         send(connectSocket, WARNING, WARNING_LEN, 0); 
     }
+
 
     // Read QUIT from client.
     read(connectSocket, buffer, QUIT_LEN);
