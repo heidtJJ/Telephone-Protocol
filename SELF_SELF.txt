@@ -1,0 +1,30 @@
+FINAL RECEIVED MESSAGE...
+
+Hop: 1
+MessageId: 1
+FromHost: 127.0.0.1:8081
+ToHost: 127.0.0.1:8082
+System: Linux/4.15.0-36-generic
+Program: C++11/GCC
+Author: Jared Heidt
+SendingTimestamp: 1:50:42:493
+MessageChecksum: 859f
+Hop: 0
+MessageId: 1
+FromHost: 127.0.0.1:8082
+ToHost: 127.0.0.1:8081
+System: Linux/4.15.0-36-generic
+Program: C++11/GCC
+Author: Jared Heidt
+SendingTimestamp: 1:50:42:492
+MessageChecksum: 859f
+
+Hello! You're receiving a message from the telephone game!
+.
+
+
+FINAL MESSAGE STATISTICS... 
+Number of machines passed through: 1
+Languages used: C++11/GCC
+Platforms used: Linux/4.15.0-36-generic
+Time spent between hop 1 and hop 0 is 0:0:0:1

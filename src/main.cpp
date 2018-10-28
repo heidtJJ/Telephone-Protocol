@@ -48,13 +48,17 @@ using std::stringstream;
 #define TIMESTAMP_LEN 16
 #define HOP "Hop"
 #define HOP_LEN 3
+#define FROM_HOST "FromHost"
+#define FROM_HOST_LEN 8
+#define IP 0
+#define PORT 1
 
 // Server and Client.
 void clientFunction(const string& sourceIP, const string& sourcePort, const string& desinationIP, const string& destinationPort, const bool originator, string& message);
 string serverFunction(const string& sourceIP, const int& sourcePort, const string& desinationIP, const int& destinationPort, const bool originator);
 
 // General Utility Functions.
-vector<string> getIpAndPort(const string& hostName);
+vector<string> get_IP_PORT(const string& hostName);
 uint16_t checksum(void* data, size_t size);
 string int_to_hexStr(uint16_t i);
 string getCurrentTimestamp();
@@ -89,38 +93,39 @@ int main(int argc, char* argv[]){
     }
     string source = argv[2];
     // Get port and IP from source
-    vector<string> sourceIpPortPair = getIpAndPort(source);
-    if(sourceIpPortPair.empty()){
+    vector<string> ip_port_source = get_IP_PORT(source);
+    if(ip_port_source.empty()){
         cout << "Invalid source address!" << endl;
         cout << "$ ./telephone <originator> <source> <dest>" << endl;
         exit(EXIT_FAILURE);
     }
 
     string dest = argv[3];
-    vector<string> destIpPortPair = getIpAndPort(dest);
-    if(destIpPortPair.empty()){
+    vector<string> ip_port_dest = get_IP_PORT(dest);
+    if(ip_port_dest.empty()){
         cout << "Invalid destination address!" << endl;
         cout << "$ ./telephone <originator> <source> <dest>" << endl;
         exit(EXIT_FAILURE);
     }
-    int sourcePort = stoi(sourceIpPortPair[1]);
-    int destPort = stoi(destIpPortPair[1]);
+    int sourcePort = stoi(ip_port_source[PORT]);
+    int destPort = stoi(ip_port_dest[PORT]);
 
     if(originator == "1"){
-        // user is originator
+        // User is originator.
         string transmitMessage = "";
-        clientFunction(sourceIpPortPair[0], sourceIpPortPair[1], destIpPortPair[0], destIpPortPair[1], true, transmitMessage);
-        string received = serverFunction(sourceIpPortPair[0], sourcePort, destIpPortPair[0], destPort, true);
-        cout << "Message: \n" << received << endl;
-        cout << "Statistics: \n";
-        printStatistics(received);
+        clientFunction(ip_port_source[IP], ip_port_source[PORT], ip_port_dest[IP], ip_port_dest[PORT], true, transmitMessage);
+        string received = serverFunction(ip_port_source[IP], sourcePort, ip_port_dest[IP], destPort, true);
+        cout << "FINAL RECEIVED MESSAGE..." << endl << endl << received << endl << endl;
+        
         // Find statistics of final message.
+        cout << "FINAL MESSAGE STATISTICS... \n";
+        printStatistics(received);
     }
     else {
-        // user is not originator
-        string received = serverFunction(sourceIpPortPair[0], sourcePort, destIpPortPair[0], destPort, false);
-        cout << received << endl;
-        clientFunction(sourceIpPortPair[0], sourceIpPortPair[1], destIpPortPair[0], destIpPortPair[1], false, received);
+        // User is not originator.
+        string received = serverFunction(ip_port_source[IP], sourcePort, ip_port_dest[IP], destPort, false);
+        cout << "RECEIVED MESSAGE..." << endl << endl << received << endl;
+        clientFunction(ip_port_source[IP], ip_port_source[PORT], ip_port_dest[IP], ip_port_dest[PORT], false, received);
     }
 
     return 0;
@@ -186,12 +191,11 @@ string serverFunction(const string& sourceIP, const int& sourcePort,
         cout << "DATA not properly recieved from server." << endl;
         exit(EXIT_FAILURE);
     }
-
     // Read data from client
     char buffer[1024] = {'\0'}; 
     read(connectSocket, buffer, 1024);
     string buff = buffer;
-    
+
     // Validate headers.
     string errorMessage = validateHeader(buff);
     if(errorMessage.empty()){
@@ -201,7 +205,6 @@ string serverFunction(const string& sourceIP, const int& sourcePort,
         //buff = errorMessage + buff; 
         send(connectSocket, WARNING, WARNING_LEN, 0); 
     }
-
 
     // Read QUIT from client.
     read(connectSocket, buffer, QUIT_LEN);
@@ -313,7 +316,7 @@ uint16_t checksum(void* data, size_t size) {
     /* Cast to uint16_t for pointer arithmetic */
     uint16_t* data16 = (uint16_t*) data;
 
-    while(size > 0) {
+    while(size > 1) {
         sum += *data16++;
         size -= 2;
     }
@@ -332,7 +335,7 @@ uint16_t checksum(void* data, size_t size) {
 
 // **************************************************************************************************
 
-vector<string> getIpAndPort(const string& hostName){
+vector<string> get_IP_PORT(const string& hostName){
     vector<string> ipPortPair;
 
     size_t colonPos = hostName.find(':');
@@ -523,6 +526,11 @@ string getCurrentTimestamp(){
     int iTotal_seconds = tvTime.tv_sec;
     struct tm *ptm = gmtime((const time_t *) & iTotal_seconds);
 
+    if(ptm == NULL){
+        cout << "Cannot retrieve UTC time." << endl;
+        exit(EXIT_FAILURE);
+    }
+
     int iHour = ptm->tm_hour;
     int iMinute = ptm->tm_min;
     int iSecond = ptm->tm_sec;
@@ -536,7 +544,7 @@ string getHeaders(const string& fromHost, const string& fromPort, const string& 
         const string& toPort, const string& nextId, const int& nextHop){
     // Get system name.
     utsname name;
-    if(uname(&name)) exit(-1);
+    if(uname(&name)) exit(EXIT_FAILURE);
     string sysname = name.sysname;
     string sysrelease = name.release;
     
@@ -654,21 +662,22 @@ string differenceTimes(const Time& start, const Time& end){
 
 void printStatistics(const string& message){
     // Print number of machines passed through.
-    int numMachinesVisited = 0;
+
+    std::unordered_set<string> machinesUsed;
     size_t start = 0;
     while(start >= 0 && start < message.length()){
         // Find start index of the next message id.
-        start = message.find(MESSAGE_ID, start);
+        start = message.find(FROM_HOST, start);
         if(start == string::npos) break;
         // Find the end index of this header.
         size_t endOfHeaderPosition = message.find(CRLF, start+1);
         // +1 for ':' and +1 ' '
-        string id = message.substr(start + MESSAGE_ID_LEN+2, endOfHeaderPosition-(start + MESSAGE_ID_LEN+2));
-        
-        ++numMachinesVisited;        
+        string hostname = message.substr(start + FROM_HOST_LEN+2, endOfHeaderPosition-(start + FROM_HOST_LEN+2));
+        vector<string> ip_port = get_IP_PORT(hostname);
+        machinesUsed.insert(ip_port[0]);
         ++start;
     }
-    cout << "Number of machines passed through: " << numMachinesVisited << endl;
+    cout << "Number of machines passed through: " << machinesUsed.size() << endl;
 
     // Print list of languages used.
     std::unordered_set<string> languagesUsed;
