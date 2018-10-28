@@ -134,7 +134,7 @@ int main(int argc, char* argv[]){
 // **************************************************************************************************
 
 string serverFunction(const string& sourceIP, const int& sourcePort, 
-                        const string& desinationIP, const int& destinationPort, const bool originator){
+        const string& desinationIP, const int& destinationPort, const bool originator){
     int doorbellSocket;
     int connectSocket;
 
@@ -220,8 +220,8 @@ string serverFunction(const string& sourceIP, const int& sourcePort,
 // **************************************************************************************************
 
 void clientFunction(const string& sourceIP, const string& sourcePort, 
-                        const string& destinationIP, const string& destinationPort, 
-                        const bool originator, string& message){
+        const string& destinationIP, const string& destinationPort, 
+        const bool originator, string& message){
     if(originator){
         initializeMessage(message, sourceIP, sourcePort, destinationIP, destinationPort);
     }
@@ -312,6 +312,11 @@ string int_to_hexStr(uint16_t i){
 // **************************************************************************************************
 
 uint16_t checksum(void* data, size_t size) {
+    if(data == NULL){
+        cout << "Checksum input is NULL." << endl;
+        exit(EXIT_FAILURE);
+    }
+
     uint32_t sum = 0;
     /* Cast to uint16_t for pointer arithmetic */
     uint16_t* data16 = (uint16_t*) data;
@@ -366,7 +371,7 @@ vector<string> get_IP_PORT(const string& hostName){
 // **************************************************************************************************
 
 // bool server is existent for debugging.
-bool sendGreeting(const int& connectSocket, bool server){
+bool sendGreeting(const int& connectSocket, const bool server){
     int result = send(connectSocket, PROPER_GREETING, PROPER_GREETING_LEN, 0 ); 
     if(result != PROPER_GREETING_LEN){
         cout << "Greeting could not be sent." << endl; 
@@ -563,7 +568,8 @@ string getHeaders(const string& fromHost, const string& fromPort, const string& 
 
 // **************************************************************************************************
 
-void initializeMessage(string& message, const string& fromHost, const string& fromPort, const string& toHost, const string& toPort){
+void initializeMessage(string& message, const string& fromHost, const string& fromPort, 
+        const string& toHost, const string& toPort){
     string headers = getHeaders(fromHost, fromPort, toHost, toPort, "1", 0);
     message = headers;
 
