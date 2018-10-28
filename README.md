@@ -3,6 +3,7 @@
 Author - Jared Heidt
 
 SELF_SELF.txt - Contains the output (on the originator) of running 2 copies of my program in a loop.
+	
 	In one terminal: ./telephone 0 127.0.0.1:8081 127.0.0.1:8082
 
 	In another terminal: ./telephone 1 127.0.0.1:8082 127.0.0.1:8081
