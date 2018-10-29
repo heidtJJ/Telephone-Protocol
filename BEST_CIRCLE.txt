@@ -1,0 +1,52 @@
+FINAL RECEIVED MESSAGE...
+
+Hop: 3
+MessageId: 1
+FromHost: 128.153.166.237:12345
+ToHost: 128.153.174.80:5001
+System: Mac OS Mojave 10.14
+Program: Java/8/Update/191
+Author: Mike/Jack
+SendingTimestamp: 23:56:45:110
+MessageChecksum: 9F85
+Warning: Bad Checksum at hop: 3
+Hop: 2
+MessageId: 1
+FromHost: 128.153.174.80:5000
+ToHost: 128.153.166.237:5123
+System: Linux/4.15.0-36-generic
+Program: C++11/GCC
+Author: Jared Heidt
+SendingTimestamp: 23:56:44:978
+MessageChecksum: 8592
+Warning: Checksum is not valid at hop 2
+Hop: 1
+MessageId: 1
+FromHost: 128.153.166.237:12345
+ToHost: 128.153.174.80:5000
+System: Mac OS Mojave 10.14
+Program: Java/8/Update/191
+Author: Mike/Jack
+SendingTimestamp: 23:56:43:962
+MessageChecksum: 9F85
+Warning: Bad Checksum at hop: 1
+Hop: 0
+MessageId: 1
+FromHost: 12.153.174.80:5001
+ToHost: 128.153.166.237:5002
+System: Linux/4.15.0-36-generic
+Program: C++11/GCC
+Author: Jared Heidt
+SendingTimestamp: 23:56:43:855
+MessageChecksum: 859f
+
+Hello! You're receiving a message from the telephone game!
+.
+
+FINAL MESSAGE STATISTICS... 
+Number of machines passed through: 3
+Languages used: C++11/GCC, Java/8/Update/191
+Platforms used: Linux/4.15.0-36-generic, Mac OS Mojave 10.14
+Time spent between hop 3 and hop 2 is 0:0:0:132
+Time spent between hop 2 and hop 1 is 0:0:1:16
+Time spent between hop 1 and hop 0 is 0:0:0:107

@@ -55,12 +55,12 @@ using std::stringstream;
 
 // Server and Client.
 void clientFunction(const string& sourceIP, const string& sourcePort, const string& desinationIP, const string& destinationPort, const bool originator, string& message);
-string serverFunction(const string& sourceIP, const int& sourcePort, const string& desinationIP, const int& destinationPort, const bool originator);
+string serverFunction(const string& sourceIP, const int& sourcePort, const string& desinationIP, const int& destinationPort, const bool originator, string& errorMessage);
 
 // General Utility Functions.
 vector<string> get_IP_PORT(const string& hostName);
 uint16_t checksum(void* data, size_t size);
-string int_to_hexStr(uint16_t i);
+string intToHexStr(uint16_t i);
 string getCurrentTimestamp();
 
 // Validation Utility Functions.
@@ -110,21 +110,27 @@ int main(int argc, char* argv[]){
     int sourcePort = stoi(ip_port_source[PORT]);
     int destPort = stoi(ip_port_dest[PORT]);
 
+    string errorMessage = "";
     if(originator == "1"){
         // User is originator.
         string transmitMessage = "";
         clientFunction(ip_port_source[IP], ip_port_source[PORT], ip_port_dest[IP], ip_port_dest[PORT], true, transmitMessage);
-        string received = serverFunction(ip_port_source[IP], sourcePort, ip_port_dest[IP], destPort, true);
+
+        string received = serverFunction(ip_port_source[IP], sourcePort, ip_port_dest[IP], destPort, true, errorMessage);
         cout << "FINAL RECEIVED MESSAGE..." << endl << endl << received << endl << endl;
-        
+
         // Find statistics of final message.
         cout << "FINAL MESSAGE STATISTICS... \n";
         printStatistics(received);
     }
     else {
         // User is not originator.
-        string received = serverFunction(ip_port_source[IP], sourcePort, ip_port_dest[IP], destPort, false);
+        string received = serverFunction(ip_port_source[IP], sourcePort, ip_port_dest[IP], destPort, false, errorMessage);
         cout << "RECEIVED MESSAGE..." << endl << endl << received << endl;
+        
+        // Allow time for remote server to open up port (network delay).
+        sleep(1);
+        received = errorMessage + received;
         clientFunction(ip_port_source[IP], ip_port_source[PORT], ip_port_dest[IP], ip_port_dest[PORT], false, received);
     }
 
@@ -134,7 +140,7 @@ int main(int argc, char* argv[]){
 // **************************************************************************************************
 
 string serverFunction(const string& sourceIP, const int& sourcePort, 
-        const string& desinationIP, const int& destinationPort, const bool originator){
+        const string& desinationIP, const int& destinationPort, const bool originator, string& errorMessage){
     int doorbellSocket;
     int connectSocket;
 
@@ -194,17 +200,14 @@ string serverFunction(const string& sourceIP, const int& sourcePort,
     // Read data from client
     char buffer[1024] = {'\0'}; 
     read(connectSocket, buffer, 1024);
-    string buff = buffer;
+    string messageFromClient = buffer;
 
     // Validate headers.
-    string errorMessage = validateHeader(buff);
-    if(errorMessage.empty()){
+    errorMessage = validateHeader(messageFromClient);
+    if(errorMessage.empty())
         send(connectSocket, SUCCESS, SUCCESS_LEN, 0);
-    }
-    else {
-        //buff = errorMessage + buff; 
+    else 
         send(connectSocket, WARNING, WARNING_LEN, 0); 
-    }
 
     // Read QUIT from client.
     read(connectSocket, buffer, QUIT_LEN);
@@ -214,7 +217,8 @@ string serverFunction(const string& sourceIP, const int& sourcePort,
 
     // Close connection socket.
     close(connectSocket);
-    return buff;
+
+    return messageFromClient;
 }
 
 // **************************************************************************************************
@@ -260,6 +264,7 @@ void clientFunction(const string& sourceIP, const string& sourcePort,
         close(connectSocket);
         exit(EXIT_FAILURE);
     }
+
     // START OF HANDSHAKE
     // Connected to server socket. Wait for greeting.
     bool success = receiveGreeting(connectSocket, false);
@@ -302,7 +307,7 @@ void clientFunction(const string& sourceIP, const string& sourcePort,
 
 // **************************************************************************************************
 
-string int_to_hexStr(uint16_t i){
+string intToHexStr(uint16_t i){
   stringstream stream;
   stream << std::setfill ('0') << std::setw(sizeof(uint16_t)*2) 
          << std::hex << i;
@@ -448,13 +453,12 @@ string validateHeader(const string& message){
 
     // Recompute checksum.
     uint16_t actualCheckSum = checksum((void*)messageData.c_str(), messageData.length()); 
-    string actualCheckSumStr = int_to_hexStr(actualCheckSum);
+    string actualCheckSumStr = intToHexStr(actualCheckSum);
 
     // Compare checksums.
-    if(actualCheckSumStr != receivedCheckSumStr
-            || actualCheckSumStr.length() != 4
-            || receivedCheckSumStr.length() != 4){
-        errorMessage += "Checksum is not valid at hop " + getHeaderData(message, "Hop") + CRLF;
+    string hop = to_string(atoi(getHeaderData(message, "Hop").c_str())+1);
+    if(actualCheckSumStr != receivedCheckSumStr){
+        errorMessage += "Warning: Checksum is not valid at hop " + hop + CRLF;
     }
 
     // Check for all valid headers.
@@ -517,7 +521,6 @@ string validateHeader(const string& message){
         ++start;
     }
     */
-
     return errorMessage;
 }
 
@@ -576,7 +579,7 @@ void initializeMessage(string& message, const string& fromHost, const string& fr
     // Append checkSum.
     string messageData = "Hello! You're receiving a message from the telephone game!";
     uint16_t checkSum = checksum((void*)messageData.c_str(), messageData.length());
-    message += "MessageChecksum: " + int_to_hexStr(checkSum) + CRLF CRLF;
+    message += "MessageChecksum: " + intToHexStr(checkSum) + CRLF CRLF;
     
     // Append data.
     message += messageData;
@@ -593,7 +596,7 @@ void appendMessageHeaders(string& message, const string& fromHost, const string&
     // Append checkSum.
     string messageData = getMessageData(message);
     uint16_t checkSum = checksum((void*)messageData.c_str(), messageData.length());
-    headers += "MessageChecksum: " + int_to_hexStr(checkSum) + CRLF;
+    headers += "MessageChecksum: " + intToHexStr(checkSum) + CRLF;
     
     // Append data.
     message = headers + message;
@@ -647,7 +650,6 @@ struct Time {
         startIdx = semiColonIdx+1;
         semiColonIdx = time.find(':', startIdx);
         milliseconds = atoi(time.substr(startIdx).c_str());
-
     };    
     int hours;
     int milliseconds;
@@ -661,7 +663,7 @@ string differenceTimes(const Time& start, const Time& end){
     unsigned int milliSecEnd = end.milliseconds + end.seconds*1000 +
             end.minutes*60*1000 + end.hours*3600*1000;   
     int result = milliSecEnd - milliSecStart;
-    return to_string(result/1000*3600) + ":" + to_string(result/1000*60) + ":" + to_string(result/1000) + ":" + to_string(result%1000);
+    return to_string(result/1000/3600) + ":" + to_string(result/1000/60) + ":" + to_string(result/1000) + ":" + to_string(result%1000);
 }
 
 // **************************************************************************************************
