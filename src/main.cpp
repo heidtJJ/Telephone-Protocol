@@ -23,7 +23,7 @@ using std::vector;
 using std::to_string;
 using std::stringstream;
 
-// Constants 
+// Constants.
 #define PROPER_GREETING "HELLO 1.7\r\n"
 #define PROPER_GREETING_LEN 11
 #define DATA "DATA\r\n"
@@ -66,13 +66,13 @@ string getCurrentTimestamp();
 // Validation Utility Functions.
 string validateHeader(const string& message);
 
-// Message Sending Utility Functions
+// Message Sending Utility Functions.
 bool receiveGreeting(const int& connectSocket, bool server);
 bool sendGreeting(const int& connectSocket, bool server);
 bool receiveDATAString(const int& connectSocket);
 bool sendDATAString(const int& connectSocket);
 
-// Header Manipulation Utility Functions
+// Header Manipulation Utility Functions.
 void appendMessageHeaders(string& message, const string& fromHost, const string& fromPort, const string& toHost, const string& toPort);
 void initializeMessage(string& message, const string& fromHost, const string& fromPort, const string& toHost, const string& toPort);
 string getHeaders(const string& fromHost, const string& fromPort, const string& toHost, const string& toPort, const int& nextId, const int& nextHop);
@@ -92,7 +92,7 @@ int main(int argc, char* argv[]){
         exit(EXIT_FAILURE);
     }
     string source = argv[2];
-    // Get port and IP from source
+    // Get port and IP from source.
     vector<string> ip_port_source = get_IP_PORT(source);
     if(ip_port_source.empty()){
         cout << "Invalid source address!" << endl;
@@ -128,8 +128,16 @@ int main(int argc, char* argv[]){
         string received = serverFunction(ip_port_source[IP], sourcePort, ip_port_dest[IP], destPort, false, errorMessage);
         cout << "RECEIVED MESSAGE..." << endl << endl << received << endl;
         
-        // Allow time for remote server to open up port (network delay).
-        sleep(1);
+        /* 
+            Allow time for the remote server to open up port (with network
+            delay). From testing, a Java program may take too long to set
+            up a new server port which causes a crash when a C++ client 
+            tries to connect to the Java server. Sleeping for a second will
+            allow ample time for the java server to set up its connection
+            port.
+        */
+        //sleep(1);
+        
         received = errorMessage + received;
         clientFunction(ip_port_source[IP], ip_port_source[PORT], ip_port_dest[IP], ip_port_dest[PORT], false, received);
     }
