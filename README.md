@@ -28,4 +28,6 @@ To run the program:
 
 Refer to the RFC.txt file for details on the protocol.
 
-Known issues or bugs - none.
+Known bugs - none.
+
+Known Issues: When running on Clarkson Odin (odin.cslabs.clarkson.edu), the Odin system does not provide the program a working UTC timestamp. This error is handled by exiting the program with failure. This occurs on lines 544-549. This may be a problem on other Clarkson virtual machines because of the (older) Linux versions running. My code was developed and ran in Ubuntu 16.04.

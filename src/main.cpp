@@ -10,6 +10,7 @@
 #include <vector> 
 #include <sstream> 
 #include <sys/utsname.h>
+#include <time.h>       /* time_t, struct tm, time, gmtime */
 #include <sys/time.h>
 #include <sstream>
 #include <unordered_set>
@@ -543,7 +544,7 @@ string getCurrentTimestamp(){
     struct tm *ptm = gmtime((const time_t *) & iTotal_seconds);
 
     if(ptm == NULL){
-        cout << "Cannot retrieve UTC time." << endl;
+        cout << "System error - Cannot retrieve UTC time." << endl;
         exit(EXIT_FAILURE);
     }
 
