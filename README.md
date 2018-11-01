@@ -1,6 +1,6 @@
 # Telephone-Protocol
 
-A message is generated and "whispered" from one to another and finally arrives back to the first one who has generated it. In the original game of telephone, the message usually arrives back at the originator garbled in a funny way. In this game, we will try to transfer the message without changing it.
+Telephone Protocol is a networked version of the classic game "telephone". A message is generated and "whispered" from one to another and finally arrives back to the first one who has generated it. In the original game of telephone, the message usually arrives back at the originator garbled in a funny way. In this game, we will try to transfer the message without changing it.
 
 Author - Jared Heidt
 
